@@ -972,7 +972,7 @@
         </div>
       </div>
 
-      <div class="field-label">Agregar orden</div>
+      <div class="field-label">Seleccionar orden</div>
       <select id="idSelect" onchange="agregarID()">
         <option value="">— Selecciona una orden —</option>
       </select>
@@ -1378,7 +1378,7 @@ function agregarID() {
   const item = rendicionData[selectedPatente][idx];
   if (!item) return;
 
-  if (!selectedIds.includes(item.id)) selectedIds.push(item.id);
+  selectedIds = [item.id];
 
   sel.value = '';
   populateIdSelect();
