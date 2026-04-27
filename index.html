@@ -1340,11 +1340,9 @@ function confirmarPatente() {
   document.getElementById('step1').querySelector('.step-num').textContent = '✓';
 
   selectedIds = [];
-  populateIdSelect();
-  renderSelectedIds();
-  document.getElementById('step2').classList.remove('hidden');
-  document.getElementById('step2').classList.add('active');
-  document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+ const items = rendicionData[selectedPatente] || [];
+  selectedIds = items.map(item => item.id);
+  iniciarRendicion();
 }
 
 function volverPaso1() {
@@ -1407,9 +1405,7 @@ function renderSelectedIds() {
 function iniciarRendicion() {
   if (selectedIds.length === 0) return;
 
-  document.getElementById('step2').classList.remove('active');
-  document.getElementById('step2').classList.add('completed');
-  document.getElementById('step2').querySelector('.step-num').textContent = '✓';
+  document.getElementById('step2').classList.add('hidden');
 
   document.getElementById('step3').classList.remove('hidden');
   document.getElementById('step3').classList.add('active');
