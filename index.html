@@ -1710,6 +1710,7 @@ function marcarListo(id) {
     renderSelectedIds();
     actualizarBotonesStep2();
 
+    document.getElementById('step2').classList.remove('hidden');
     document.getElementById('step2').classList.add('active');
     document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 600);
