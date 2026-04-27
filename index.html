@@ -1176,7 +1176,7 @@ async function cargarDatosDesdeSheet() {
   try {
     const resp = await fetch(GAS_URL);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    rendicionData = await resp.json();
+    const json = await resp.json();     rendicionData = json.data || json;
     const total = Object.values(rendicionData).reduce((s, a) => s + a.length, 0);
     const patentes = Object.keys(rendicionData).length;
     updateLoadStatus(`✓ ${total} órdenes · ${patentes} patentes · Última carga: ${new Date().toLocaleTimeString('es-CL')}`);
