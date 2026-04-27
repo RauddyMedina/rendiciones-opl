@@ -979,8 +979,13 @@
 
       <div id="selectedIds" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;"></div>
 
+      <div id="step2Progress" style="margin-top:12px; color:var(--accent3); font-size:13px; font-family:'DM Mono',monospace;"></div>
+
       <button class="btn btn-primary" onclick="iniciarRendicion()" id="btnIniciarRendicion" disabled style="margin-top:16px;">
         Iniciar Rendición →
+      </button>
+      <button class="btn btn-success hidden" id="btnEnviarStep2" onclick="enviarTodasRendiciones()" style="margin-top:12px;">
+        ✓ Enviar todas las rendiciones
       </button>
       <button class="btn btn-ghost" onclick="volverPaso1()">← Cambiar patente</button>
     </div>
@@ -1102,6 +1107,7 @@ let rendicionData = {};
 let selectedPatente = '';
 let selectedIds = [];
 let rendiciones = {};
+let ordenesListas = {};
 let allRendiciones = [];
 let bodegueroNombre = '';
 
@@ -1176,7 +1182,8 @@ async function cargarDatosDesdeSheet() {
   try {
     const resp = await fetch(GAS_URL);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const json = await resp.json();     rendicionData = json.data || json;
+    const json = await resp.json();
+    rendicionData = json.data || json;
     const total = Object.values(rendicionData).reduce((s, a) => s + a.length, 0);
     const patentes = Object.keys(rendicionData).length;
     updateLoadStatus(`✓ ${total} órdenes · ${patentes} patentes · Última carga: ${new Date().toLocaleTimeString('es-CL')}`);
@@ -1339,10 +1346,14 @@ function confirmarPatente() {
   document.getElementById('step1').classList.add('completed');
   document.getElementById('step1').querySelector('.step-num').textContent = '✓';
 
+  ordenesListas = {};
   selectedIds = [];
- const items = rendicionData[selectedPatente] || [];
-  selectedIds = items.map(item => item.id);
-  iniciarRendicion();
+  populateIdSelect();
+  renderSelectedIds();
+  actualizarBotonesStep2();
+  document.getElementById('step2').classList.remove('hidden');
+  document.getElementById('step2').classList.add('active');
+  document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function volverPaso1() {
@@ -1360,7 +1371,7 @@ function populateIdSelect() {
   sel.innerHTML = '<option value="">— Selecciona una orden —</option>';
 
   items.forEach((item, idx) => {
-    if (selectedIds.includes(item.id)) return;
+    if (ordenesListas[item.id]) return; // ya completada
     const opt = document.createElement('option');
     opt.value = idx;
     opt.textContent = `${item.id} · ${item.producto?.substring(0,35) || ''}`;
@@ -1669,30 +1680,49 @@ function checkCardComplete(id) {
 function marcarListo(id) {
   if (!checkCardComplete(id)) return;
 
-  const card  = document.getElementById(`card-${id}`);
-  const badge = document.getElementById(`status-badge-${id}`);
-  card.classList.add('rendido');
-  badge.className = 'id-status status-done';
-  badge.textContent = '✓ Rendido';
+  // Guardar datos de esta orden en ordenesListas
+  const r = rendiciones[id];
+  const items = rendicionData[selectedPatente] || [];
+  const item = items.find(x => x.id === id) || {};
+  ordenesListas[id] = {
+    id,
+    producto:       item.producto   || '',
+    subestado:      item.subestado  || '',
+    estadoProducto: r.estado,
+    tipoDano:       r.tiposDano     || '',
+    observacion:    r.observacion   || '',
+    bultos:         r.bultos,
+    fotos:          r.fotosData
+  };
 
-  document.getElementById(`body-${id}`).classList.remove('open');
-
-  const btn = document.getElementById(`btn-listo-${id}`);
-  btn.disabled = true;
-  btn.textContent = '✓ Confirmado';
-  btn.style.cssText += '; background:rgba(0,255,136,0.2); color:var(--accent3); border:1px solid var(--accent3);';
-
-  rendiciones[id].listo = true;
-  updateProgress();
   showToast(`Orden ${id} confirmada ✓`, 'success');
 
-  const nextPending = selectedIds.find(sid => !rendiciones[sid].listo && sid !== id);
-  if (nextPending) {
-    setTimeout(() => {
-      document.getElementById(`body-${nextPending}`).classList.add('open');
-      document.getElementById(`card-${nextPending}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 400);
-  }
+  // Volver al paso 2 para seleccionar la siguiente orden
+  setTimeout(() => {
+    document.getElementById('step3').classList.add('hidden');
+    document.getElementById('step3').classList.remove('active');
+    document.getElementById('progressBar').classList.add('hidden');
+    document.getElementById('idsContainer').classList.add('hidden');
+    document.getElementById('finalSection').classList.add('hidden');
+
+    selectedIds = [];
+    populateIdSelect();
+    renderSelectedIds();
+    actualizarBotonesStep2();
+
+    document.getElementById('step2').classList.add('active');
+    document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 600);
+}
+
+function actualizarBotonesStep2() {
+  const total = (rendicionData[selectedPatente] || []).length;
+  const done = Object.keys(ordenesListas).length;
+  const progEl = document.getElementById('step2Progress');
+  if (progEl) progEl.textContent = done > 0 ? `${done}/${total} órdenes completadas` : '';
+  const btnEnviarStep2 = document.getElementById('btnEnviarStep2');
+  if (btnEnviarStep2) btnEnviarStep2.classList.toggle('hidden', done < total);
+  document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
 }
 
 function updateProgress() {
@@ -1706,6 +1736,40 @@ function updateProgress() {
 }
 
 // ─── ENVÍO A GAS + GITHUB ─────────────────────────────────────
+async function enviarTodasRendiciones() {
+  const ids = Object.keys(ordenesListas);
+  if (ids.length === 0) return;
+  const btn = document.getElementById('btnEnviarStep2');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  const now = new Date();
+  const record = {
+    timestamp:    now.toLocaleString('es-CL'),
+    fecha:        toISOLocal(now),
+    bodeguero:    bodegueroNombre,
+    patente:      selectedPatente,
+    totalOrdenes: ids.length,
+    ordenes:      ids.map(id => ordenesListas[id])
+  };
+  allRendiciones.push(record);
+  localStorage.setItem('rendicionHistory_opl', JSON.stringify(allRendiciones));
+  if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) {
+    mostrarExito(record, '⚠ Guardado localmente (GAS no configurado)');
+    return;
+  }
+  try {
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record)
+    });
+    mostrarExito(record, '');
+  } catch (e) {
+    mostrarExito(record, '⚠ Sin conexión — guardado localmente');
+  }
+}
+
 async function enviarRendicion() {
   const now = new Date();
   const timestamp = now.toLocaleString('es-CL');
