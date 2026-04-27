@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Control de Rendiciones Bodega · OPL</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0f1e;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1f2d45;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #00ff88;
+    --text: #e8eef8;
+    --text2: #8899bb;
+    --danger: #ff4757;
+    --warning: #ffa502;
+    --success: #2ed573;
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 20px 16px 80px;
+  }
+
+  .header {
+    text-align: center;
+    padding: 32px 0 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+  }
+
+  .header-badge {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(0,212,255,0.3);
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .header-sub {
+    font-size: 13px;
+    color: var(--text2);
+    margin-top: 8px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .date-display {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .date-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent3);
+    box-shadow: 0 0 8px var(--accent3);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .date-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  .date-text strong { color: var(--text); }
+
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+
+  .step.active {
+    border-color: rgba(0,212,255,0.4);
+    box-shadow: 0 0 20px rgba(0,212,255,0.05);
+  }
+
+  .step.completed { border-color: rgba(0,255,136,0.3); }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text2);
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+
+  .step.active .step-num {
+    background: rgba(0,212,255,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .step.completed .step-num {
+    background: rgba(0,255,136,0.15);
+    border-color: var(--accent3);
+    color: var(--accent3);
+  }
+
+  .step-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.2px;
+  }
+
+  .step-desc {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 2px;
+  }
+
+  .field-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 8px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  select, textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    padding: 12px 14px;
+    appearance: none;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+  }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238899bb' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+  }
+
+  select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+  }
+
+  select option { background: #1a2235; }
+
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .btn-primary { background: var(--accent); color: var(--bg); }
+
+  .btn-primary:hover {
+    background: #33ddff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(0,212,255,0.3);
+  }
+
+  .btn-success { background: var(--accent3); color: var(--bg); }
+
+  .btn-success:hover {
+    background: #4dffa0;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(0,255,136,0.3);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border);
+    margin-top: 8px;
+  }
+
+  .btn-ghost:hover { border-color: var(--text2); color: var(--text); }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .ids-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  .id-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: all 0.2s;
+  }
+
+  .id-card.rendido {
+    border-color: rgba(0,255,136,0.4);
+    background: rgba(0,255,136,0.03);
+  }
+
+  .id-card-header {
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .id-card-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .id-number {
+    font-family: 'DM Mono', monospace;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--accent);
+  }
+
+  .id-product {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 2px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .id-status {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    text-transform: uppercase;
+  }
+
+  .status-pending {
+    background: rgba(255,165,2,0.15);
+    color: var(--warning);
+    border: 1px solid rgba(255,165,2,0.3);
+  }
+
+  .status-done {
+    background: rgba(0,255,136,0.15);
+    color: var(--success);
+    border: 1px solid rgba(0,255,136,0.3);
+  }
+
+  .id-card-body {
+    padding: 0 16px 16px;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+
+  .id-card-body.open { display: block; }
+
+  .field-group { margin-top: 14px; }
+
+  .estado-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .estado-btn {
+    padding: 10px 6px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .estado-btn:hover { border-color: var(--text2); }
+
+  .estado-btn.selected-nuevo {
+    background: rgba(0,255,136,0.15);
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  .estado-btn.selected-danado {
+    background: rgba(255,71,87,0.15);
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .estado-btn.selected-entre {
+    background: rgba(0,212,255,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .photo-upload { margin-top: 14px; }
+
+  .photo-drop {
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .photo-drop:hover, .photo-drop.dragover {
+    border-color: var(--accent);
+    background: rgba(0,212,255,0.05);
+  }
+
+  .photo-drop input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .photo-drop-icon { font-size: 28px; margin-bottom: 6px; }
+
+  .photo-drop-text { font-size: 12px; color: var(--text2); }
+  .photo-drop-text strong { color: var(--accent); }
+
+  .photos-preview {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .photo-thumb-wrap { position: relative; }
+
+  .photo-thumb-wrap img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+
+  .photo-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(255,71,87,0.9);
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 10px;
+    color: white;
+  }
+
+  .dano-section { display: none; margin-top: 14px; }
+  .dano-section.visible { display: block; }
+
+  .progress-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .progress-info { flex: 1; }
+
+  .progress-label {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 6px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .progress-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .progress-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .final-section {
+    background: var(--surface);
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 16px;
+    text-align: center;
+  }
+
+  .final-icon { font-size: 36px; margin-bottom: 10px; }
+  .final-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .final-desc { font-size: 13px; color: var(--text2); margin-bottom: 16px; }
+
+  .success-screen {
+    display: none;
+    text-align: center;
+    padding: 60px 20px;
+  }
+
+  .success-screen.visible { display: block; }
+
+  .success-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+    animation: bounce 0.6s ease;
+  }
+
+  @keyframes bounce {
+    0% { transform: scale(0); }
+    60% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+  }
+
+  .success-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    margin-bottom: 10px;
+  }
+
+  .success-sub { font-size: 14px; color: var(--text2); margin-bottom: 24px; }
+
+  .receipt {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: left;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--text2);
+    max-width: 360px;
+    margin: 0 auto;
+  }
+
+  .receipt strong { color: var(--accent); }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 13px;
+    color: var(--text);
+    z-index: 1000;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--success); }
+  .toast.error { border-color: var(--danger); }
+
+  .hidden { display: none !important; }
+
+  .loading-dots::after {
+    content: '';
+    animation: dots 1.5s infinite;
+  }
+  @keyframes dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+  }
+
+  .admin-link {
+    text-align: center;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .admin-link a {
+    font-size: 11px;
+    color: var(--text2);
+    text-decoration: none;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 1px;
+  }
+
+  .admin-link a:hover { color: var(--accent); }
+
+  @media (max-width: 400px) {
+    .estado-selector { grid-template-columns: 1fr 1fr; }
+    .estado-btn:last-child { grid-column: span 2; }
+  }
+
+  .id-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .id-screen-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 36px 28px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    animation: slideUp 0.4s ease;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .id-screen-logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(0,212,255,0.3);
+    padding: 4px 14px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 20px;
+  }
+
+  .id-screen h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 6px;
+    line-height: 1.15;
+  }
+
+  .id-screen h2 span { color: var(--accent); }
+
+  .id-screen-sub {
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+
+  .id-avatar { font-size: 52px; margin-bottom: 16px; display: block; }
+
+  .nombre-input-wrap { margin-bottom: 12px; }
+
+  .nombre-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    padding: 14px 16px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    text-align: center;
+    letter-spacing: 0.3px;
+  }
+
+  .nombre-input::placeholder { color: var(--text2); font-size: 14px; }
+
+  .nombre-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+  }
+
+  .nombre-input.filled { border-color: rgba(0,255,136,0.4); }
+
+  .user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,255,136,0.1);
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 20px;
+    padding: 4px 12px 4px 8px;
+    font-size: 13px;
+    color: var(--accent3);
+    font-weight: 600;
+    margin-left: 8px;
+    cursor: pointer;
+  }
+
+  .user-chip-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent3);
+    flex-shrink: 0;
+  }
+
+  .closed-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+    position: relative;
+    z-index: 1;
+    text-align: center;
+  }
+
+  .closed-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 40px 28px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    animation: slideUp 0.4s ease;
+  }
+
+  .closed-icon { font-size: 56px; margin-bottom: 16px; display: block; }
+
+  .closed-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .closed-sub {
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+
+  .closed-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 20px;
+  }
+
+  .fecha-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,107,53,0.12);
+    border: 1px solid rgba(255,107,53,0.3);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    margin: 3px;
+  }
+
+  .fecha-tag button {
+    background: none;
+    border: none;
+    color: var(--accent2);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.7;
+  }
+
+  .fecha-tag button:hover { opacity: 1; }
+
+  /* Spinner de carga */
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .bultos-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    padding: 12px 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    -moz-appearance: textfield;
+  }
+  .bultos-input::-webkit-inner-spin-button,
+  .bultos-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .bultos-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+  }
+</style>
+</head>
+<body>
+
+<!-- PANTALLA DÍA NO HÁBIL -->
+<div class="closed-screen hidden" id="closedScreen">
+  <div class="closed-card">
+    <div class="id-screen-logo">Control de Rendiciones Bodega</div>
+    <span class="closed-icon">🔒</span>
+    <div class="closed-title">Sistema Cerrado</div>
+    <div class="closed-date" id="closedDateText">—</div>
+    <div class="closed-sub">
+      Hoy es <strong id="closedDayName">—</strong>. El sistema de rendiciones opera de <strong>lunes a sábado</strong>.<br><br>
+      Si necesitas acceder por excepción, contacta al administrador.
+    </div>
+    <div style="font-size:11px; color:var(--text2); font-family:'DM Mono',monospace;">
+      Próxima apertura: <span id="proximaApertura" style="color:var(--accent);">—</span>
+    </div>
+    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+      <a href="?prueba=1" style="font-size:11px; color:var(--text2); font-family:'DM Mono',monospace; text-decoration:none; letter-spacing:1px; opacity:0.5;">[ modo prueba ]</a>
+    </div>
+  </div>
+</div>
+
+<!-- PANTALLA DE CARGA -->
+<div class="id-screen hidden" id="loadingScreen">
+  <div class="id-screen-card" style="padding:48px 28px;">
+    <div class="id-screen-logo">Control de Rendiciones Bodega</div>
+    <div class="spinner"></div>
+    <div style="font-family:'DM Mono',monospace; font-size:13px; color:var(--text2);">
+      Cargando órdenes del día<span class="loading-dots"></span>
+    </div>
+  </div>
+</div>
+
+<!-- PANTALLA DE IDENTIFICACIÓN -->
+<div class="id-screen hidden" id="loginScreen">
+  <div class="id-screen-card">
+    <div class="id-screen-logo">Control de Rendiciones Bodega</div>
+    <span class="id-avatar">🧑‍🏭</span>
+    <h2>Bienvenido al<br><span>Sistema de Rendiciones</span></h2>
+    <p class="id-screen-sub">
+      Ingresa tu nombre completo para registrar quién recibe y procesa las rendiciones del día.
+    </p>
+
+    <div class="nombre-input-wrap">
+      <input
+        type="text"
+        class="nombre-input"
+        id="nombreInput"
+        placeholder="Escribe tu nombre completo"
+        autocomplete="off"
+        oninput="onNombreInput()"
+        onkeydown="if(event.key==='Enter') confirmarNombre()"
+        maxlength="60"
+      >
+    </div>
+
+    <button class="btn btn-primary" id="btnEntrar" onclick="confirmarNombre()" disabled style="margin-top:4px;">
+      Ingresar al sistema →
+    </button>
+
+    <div style="margin-top:16px; font-size:11px; color:var(--text2); font-family:'DM Mono',monospace;">
+      Tu nombre quedará registrado en cada rendición
+    </div>
+  </div>
+</div>
+
+<!-- APP PRINCIPAL -->
+<div class="container hidden" id="appWrapper">
+
+  <div id="mainApp">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-badge">Proyecto Control de Rendiciones Bodega</div>
+      <h1>Rendición <span>Diaria</span></h1>
+      <div class="header-sub" id="dateDisplay">Cargando fecha<span class="loading-dots"></span></div>
+    </div>
+
+    <!-- Bodeguero activo + Date info -->
+    <div class="date-display">
+      <div class="date-dot"></div>
+      <div class="date-text" style="flex:1;">
+        <strong id="rendicionDate">—</strong> ·
+        <span id="totalIdsGlobal">0 órdenes cargadas</span>
+      </div>
+      <div class="user-chip" onclick="cerrarSesion()" title="Cambiar usuario">
+        <div class="user-chip-dot"></div>
+        <span id="nombreActivo">—</span>
+      </div>
+    </div>
+
+    <!-- Step 1: Seleccionar Patente -->
+    <div class="step active" id="step1">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div>
+          <div class="step-title">Seleccionar Patente</div>
+          <div class="step-desc">Elige el vehículo que vas a rendir</div>
+        </div>
+      </div>
+
+      <div class="field-label">Patente del vehículo</div>
+      <select id="patenteSelect" onchange="onPatenteChange()">
+        <option value="">— Selecciona una patente —</option>
+      </select>
+
+      <div id="patenteInfo" class="hidden" style="margin-top:12px; padding:12px; background:var(--surface2); border-radius:8px; border:1px solid var(--border);">
+        <div style="font-size:11px; color:var(--text2); font-family:'DM Mono',monospace; margin-bottom:4px;">ÓRDENES ENCONTRADAS</div>
+        <div id="patenteCount" style="font-size:22px; font-family:'DM Mono',monospace; color:var(--accent);">—</div>
+      </div>
+
+      <button class="btn btn-primary" onclick="confirmarPatente()" id="btnConfirmarPatente" disabled>
+        Confirmar Patente →
+      </button>
+    </div>
+
+    <!-- Step 2: Seleccionar IDs -->
+    <div class="step hidden" id="step2">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div>
+          <div class="step-title">Seleccionar Órdenes a Rendir</div>
+          <div class="step-desc">Elige las IDs que vas a rendir hoy</div>
+        </div>
+      </div>
+
+      <div class="field-label">Agregar orden</div>
+      <select id="idSelect" onchange="agregarID()">
+        <option value="">— Selecciona una orden —</option>
+      </select>
+
+      <div id="selectedIds" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+
+      <button class="btn btn-primary" onclick="iniciarRendicion()" id="btnIniciarRendicion" disabled style="margin-top:16px;">
+        Iniciar Rendición →
+      </button>
+      <button class="btn btn-ghost" onclick="volverPaso1()">← Cambiar patente</button>
+    </div>
+
+    <!-- Step 3: Rendir cada ID -->
+    <div class="step hidden" id="step3">
+      <div class="step-header">
+        <div class="step-num">3</div>
+        <div>
+          <div class="step-title">Registrar Rendición</div>
+          <div class="step-desc">Completa cada orden seleccionada</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="progress-bar hidden" id="progressBar">
+      <div class="progress-info">
+        <div class="progress-label">PROGRESO DE RENDICIÓN</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="progress-count" id="progressCount">0/0</div>
+    </div>
+
+    <!-- IDs container -->
+    <div id="idsContainer" class="hidden"></div>
+
+    <!-- Final Submit -->
+    <div class="final-section hidden" id="finalSection">
+      <div class="final-icon">📋</div>
+      <div class="final-title">¿Todo listo?</div>
+      <div class="final-desc">Revisa que todas las órdenes estén completas antes de enviar la rendición.</div>
+      <button class="btn btn-success" onclick="enviarRendicion()" id="btnEnviar">
+        ✓ Enviar Rendición Completa
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Success Screen -->
+  <div class="success-screen" id="successScreen">
+    <div class="success-icon">✅</div>
+    <div class="success-title">¡Rendición Enviada!</div>
+    <div class="success-sub">Los datos fueron registrados en el sistema.</div>
+    <div class="receipt" id="receipt"></div>
+    <button class="btn btn-ghost" onclick="nuevaRendicion()" style="max-width:300px; margin:20px auto 0;">
+      + Nueva Rendición
+    </button>
+  </div>
+
+  <!-- Admin link -->
+  <div class="admin-link">
+    <a href="#" onclick="toggleAdmin(event)">[ ADMIN ]</a>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="adminPanel" class="hidden" style="margin-top:16px;">
+
+    <!-- Estado de datos -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">⚙</div>
+        <div>
+          <div class="step-title">Estado del Sistema</div>
+          <div class="step-desc">Información de conexión con Google Sheets</div>
+        </div>
+      </div>
+      <div id="loadStatus" style="font-size:12px; font-family:'DM Mono',monospace; color:var(--text2); padding:10px 12px; background:var(--surface2); border-radius:8px;">
+        Sin información
+      </div>
+      <button class="btn btn-ghost" onclick="recargarDatos()" style="margin-top:12px;">
+        ↻ Recargar datos del Sheet
+      </button>
+    </div>
+
+    <!-- Fechas especiales -->
+    <div class="step" style="margin-top:12px;">
+      <div class="step-header">
+        <div class="step-num">📅</div>
+        <div>
+          <div class="step-title">Días con Rendición Excepcional</div>
+          <div class="step-desc">Domingos u otros días en que SÍ habrá rendiciones</div>
+        </div>
+      </div>
+
+      <div class="field-label">Agregar fecha de excepción</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="date" id="fechaExcepcionInput"
+          style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:14px; padding:10px 12px; outline:none; color-scheme:dark;">
+        <button class="btn btn-primary" onclick="agregarFechaExcepcion()" style="width:auto; margin-top:0; padding:10px 16px; white-space:nowrap;">
+          + Agregar
+        </button>
+      </div>
+
+      <div id="fechasExcepcionList" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:4px; min-height:28px;">
+        <span style="font-size:11px; color:var(--text2); font-family:'DM Mono',monospace;" id="emptyFechasMsg">Sin fechas excepcionales registradas</span>
+      </div>
+
+      <div style="margin-top:10px; font-size:11px; color:var(--text2); font-family:'DM Mono',monospace; line-height:1.6;">
+        Los <strong style="color:var(--danger);">domingos</strong> el sistema se cierra automáticamente, salvo las fechas aquí indicadas.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIGURACIÓN ──────────────────────────────────────────────
+// Reemplaza con la URL de tu Google Apps Script tras el deploy
+const GAS_URL = 'REEMPLAZAR_CON_TU_URL_GAS';
+
+// ─── DATA STORE ───────────────────────────────────────────────
+let rendicionData = {};
+let selectedPatente = '';
+let selectedIds = [];
+let rendiciones = {};
+let allRendiciones = [];
+let bodegueroNombre = '';
+
+// ─── IDENTIFICACIÓN ───────────────────────────────────────────
+function onNombreInput() {
+  const val = document.getElementById('nombreInput').value.trim();
+  const btn = document.getElementById('btnEntrar');
+  const input = document.getElementById('nombreInput');
+  btn.disabled = val.length < 3;
+  input.classList.toggle('filled', val.length >= 3);
+}
+
+function confirmarNombre() {
+  const nombre = document.getElementById('nombreInput').value.trim();
+  if (nombre.length < 3) return;
+  bodegueroNombre = nombre;
+  document.getElementById('nombreActivo').textContent = nombre;
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('appWrapper').classList.remove('hidden');
+  showToast(`Bienvenido, ${nombre} 👋`, 'success');
+}
+
+function cerrarSesion() {
+  if (!confirm('¿Quieres cambiar de usuario?')) return;
+  bodegueroNombre = '';
+  document.getElementById('nombreInput').value = '';
+  document.getElementById('nombreInput').classList.remove('filled');
+  document.getElementById('btnEntrar').disabled = true;
+  document.getElementById('appWrapper').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  nuevaRendicion();
+}
+
+// ─── INIT ──────────────────────────────────────────────────────
+async function init() {
+  const now = new Date();
+  const dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const dateStr = `${dias[now.getDay()]} ${now.getDate()} de ${meses[now.getMonth()]} ${now.getFullYear()}`;
+  document.getElementById('dateDisplay').textContent = dateStr;
+  document.getElementById('rendicionDate').textContent = dateStr;
+
+  const hist = localStorage.getItem('rendicionHistory_opl');
+  if (hist) allRendiciones = JSON.parse(hist);
+
+  renderFechasExcepcion();
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const modoP = urlParams.get('prueba') === '1';
+
+  if (!modoP && !esDiaHabil(now)) {
+    mostrarPantallaCerrada(now, dias, meses);
+    return;
+  }
+
+  // Mostrar spinner mientras carga
+  document.getElementById('loadingScreen').classList.remove('hidden');
+  await cargarDatosDesdeSheet();
+  document.getElementById('loadingScreen').classList.add('hidden');
+
+  document.getElementById('loginScreen').classList.remove('hidden');
+  setTimeout(() => document.getElementById('nombreInput').focus(), 300);
+  if (modoP) showToast('🔧 Modo prueba activo', '');
+}
+
+async function cargarDatosDesdeSheet() {
+  if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) {
+    rendicionData = {};
+    updateLoadStatus('⚠ URL de GAS no configurada. Contacta al administrador.');
+    return;
+  }
+  try {
+    const resp = await fetch(GAS_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    rendicionData = await resp.json();
+    const total = Object.values(rendicionData).reduce((s, a) => s + a.length, 0);
+    const patentes = Object.keys(rendicionData).length;
+    updateLoadStatus(`✓ ${total} órdenes · ${patentes} patentes · Última carga: ${new Date().toLocaleTimeString('es-CL')}`);
+  } catch (e) {
+    rendicionData = {};
+    updateLoadStatus('✗ Error al conectar con el sheet: ' + e.message);
+    showToast('Error cargando datos del sheet', 'error');
+  }
+  populatePatenteSelect();
+  updateTotalCount();
+}
+
+async function recargarDatos() {
+  showToast('Recargando datos...', '');
+  await cargarDatosDesdeSheet();
+  populatePatenteSelect();
+  updateTotalCount();
+  showToast('Datos actualizados ✓', 'success');
+}
+
+function updateLoadStatus(msg) {
+  const el = document.getElementById('loadStatus');
+  if (el) el.textContent = msg;
+}
+
+function esDiaHabil(fecha) {
+  const dow = fecha.getDay();
+  if (dow !== 0) return true;
+  const fechasEx = getFechasExcepcion();
+  return fechasEx.includes(toISOLocal(fecha));
+}
+
+function toISOLocal(d) {
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function mostrarPantallaCerrada(now, dias, meses) {
+  document.getElementById('closedScreen').classList.remove('hidden');
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('appWrapper').classList.add('hidden');
+
+  const dayName = dias[now.getDay()];
+  document.getElementById('closedDayName').textContent = dayName;
+  document.getElementById('closedDateText').textContent =
+    `${now.getDate()} de ${meses[now.getMonth()]} ${now.getFullYear()}`;
+
+  const proxLunes = new Date(now);
+  proxLunes.setDate(now.getDate() + (1 + 7 - now.getDay()) % 7 || 7);
+  document.getElementById('proximaApertura').textContent =
+    `Lunes ${proxLunes.getDate()} de ${meses[proxLunes.getMonth()]}`;
+}
+
+// ─── FECHAS DE EXCEPCIÓN ──────────────────────────────────────
+function getFechasExcepcion() {
+  const raw = localStorage.getItem('fechasExcepcion_opl');
+  return raw ? JSON.parse(raw) : [];
+}
+
+function saveFechasExcepcion(arr) {
+  localStorage.setItem('fechasExcepcion_opl', JSON.stringify(arr));
+}
+
+function agregarFechaExcepcion() {
+  const input = document.getElementById('fechaExcepcionInput');
+  const val = input.value;
+  if (!val) { showToast('Selecciona una fecha', 'error'); return; }
+
+  const fechas = getFechasExcepcion();
+  if (fechas.includes(val)) { showToast('Esa fecha ya está registrada', 'error'); return; }
+
+  const d = new Date(val + 'T12:00:00');
+  if (d.getDay() !== 0) {
+    showToast('Solo puedes agregar domingos como excepción', 'error');
+    return;
+  }
+
+  fechas.push(val);
+  fechas.sort();
+  saveFechasExcepcion(fechas);
+  renderFechasExcepcion();
+  input.value = '';
+  showToast(`Domingo ${val} agregado ✓`, 'success');
+}
+
+function quitarFechaExcepcion(fecha) {
+  const fechas = getFechasExcepcion().filter(f => f !== fecha);
+  saveFechasExcepcion(fechas);
+  renderFechasExcepcion();
+  showToast('Fecha eliminada', '');
+}
+
+function renderFechasExcepcion() {
+  const container = document.getElementById('fechasExcepcionList');
+  if (!container) return;
+  const fechas = getFechasExcepcion();
+  container.innerHTML = '';
+
+  if (fechas.length === 0) {
+    const msg = document.createElement('span');
+    msg.style.cssText = 'font-size:11px; color:var(--text2); font-family:"DM Mono",monospace;';
+    msg.textContent = 'Sin fechas excepcionales registradas';
+    container.appendChild(msg);
+    return;
+  }
+
+  fechas.forEach(f => {
+    const d = new Date(f + 'T12:00:00');
+    const label = d.toLocaleDateString('es-CL', { weekday:'short', day:'numeric', month:'short' });
+    const tag = document.createElement('div');
+    tag.className = 'fecha-tag';
+    tag.innerHTML = `📅 ${label} <button onclick="quitarFechaExcepcion('${f}')" title="Eliminar">×</button>`;
+    container.appendChild(tag);
+  });
+}
+
+// ─── PATENTE SELECT ────────────────────────────────────────────
+function populatePatenteSelect() {
+  const sel = document.getElementById('patenteSelect');
+  const patentes = Object.keys(rendicionData).sort();
+  sel.innerHTML = '<option value="">— Selecciona una patente —</option>';
+  patentes.forEach(p => {
+    const count = rendicionData[p].length;
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = `${p} (${count} orden${count !== 1 ? 'es' : ''})`;
+    sel.appendChild(opt);
+  });
+}
+
+function updateTotalCount() {
+  let total = 0;
+  Object.values(rendicionData).forEach(arr => total += arr.length);
+  document.getElementById('totalIdsGlobal').textContent = `${total} órdenes cargadas`;
+}
+
+// ─── STEP 1 ────────────────────────────────────────────────────
+function onPatenteChange() {
+  const p = document.getElementById('patenteSelect').value;
+  const btn = document.getElementById('btnConfirmarPatente');
+  const info = document.getElementById('patenteInfo');
+
+  if (p && rendicionData[p]) {
+    const count = rendicionData[p].length;
+    document.getElementById('patenteCount').textContent = `${count} orden${count !== 1 ? 'es' : ''}`;
+    info.classList.remove('hidden');
+    btn.disabled = false;
+  } else {
+    info.classList.add('hidden');
+    btn.disabled = true;
+  }
+}
+
+function confirmarPatente() {
+  selectedPatente = document.getElementById('patenteSelect').value;
+  if (!selectedPatente) return;
+
+  document.getElementById('step1').classList.remove('active');
+  document.getElementById('step1').classList.add('completed');
+  document.getElementById('step1').querySelector('.step-num').textContent = '✓';
+
+  selectedIds = [];
+  populateIdSelect();
+  renderSelectedIds();
+  document.getElementById('step2').classList.remove('hidden');
+  document.getElementById('step2').classList.add('active');
+  document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function volverPaso1() {
+  document.getElementById('step1').classList.remove('completed');
+  document.getElementById('step1').classList.add('active');
+  document.getElementById('step1').querySelector('.step-num').textContent = '1';
+  document.getElementById('step2').classList.add('hidden');
+  selectedIds = [];
+}
+
+// ─── STEP 2 ────────────────────────────────────────────────────
+function populateIdSelect() {
+  const sel = document.getElementById('idSelect');
+  const items = rendicionData[selectedPatente] || [];
+  sel.innerHTML = '<option value="">— Selecciona una orden —</option>';
+
+  items.forEach((item, idx) => {
+    if (selectedIds.includes(item.id)) return;
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = `${item.id} · ${item.producto?.substring(0,35) || ''}`;
+    sel.appendChild(opt);
+  });
+}
+
+function agregarID() {
+  const sel = document.getElementById('idSelect');
+  const idx = sel.value;
+  if (!idx && idx !== 0) return;
+
+  const item = rendicionData[selectedPatente][idx];
+  if (!item) return;
+
+  if (!selectedIds.includes(item.id)) selectedIds.push(item.id);
+
+  sel.value = '';
+  populateIdSelect();
+  renderSelectedIds();
+  document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
+}
+
+function quitarID(id) {
+  selectedIds = selectedIds.filter(x => x !== id);
+  populateIdSelect();
+  renderSelectedIds();
+  document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
+}
+
+function renderSelectedIds() {
+  const container = document.getElementById('selectedIds');
+  container.innerHTML = '';
+  selectedIds.forEach(id => {
+    const tag = document.createElement('div');
+    tag.style.cssText = 'display:inline-flex; align-items:center; gap:6px; background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3); border-radius:20px; padding:4px 10px; font-family:"DM Mono",monospace; font-size:11px; color:var(--accent);';
+    tag.innerHTML = `${id} <button onclick="quitarID('${id}')" style="background:none; border:none; color:var(--accent2); cursor:pointer; font-size:14px; line-height:1; padding:0;">×</button>`;
+    container.appendChild(tag);
+  });
+}
+
+function iniciarRendicion() {
+  if (selectedIds.length === 0) return;
+
+  document.getElementById('step2').classList.remove('active');
+  document.getElementById('step2').classList.add('completed');
+  document.getElementById('step2').querySelector('.step-num').textContent = '✓';
+
+  document.getElementById('step3').classList.remove('hidden');
+  document.getElementById('step3').classList.add('active');
+
+  rendiciones = {};
+  selectedIds.forEach(id => {
+    rendiciones[id] = { estado: '', tiposDano: '', observacion: '', bultos: 0, fotos: [], fotosData: [] };
+  });
+
+  renderIDCards();
+  document.getElementById('progressBar').classList.remove('hidden');
+  document.getElementById('idsContainer').classList.remove('hidden');
+  document.getElementById('finalSection').classList.remove('hidden');
+  updateProgress();
+
+  document.getElementById('step3').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ─── STEP 3: ID CARDS ─────────────────────────────────────────
+function renderIDCards() {
+  const container = document.getElementById('idsContainer');
+  container.innerHTML = '';
+
+  selectedIds.forEach(id => {
+    const items = rendicionData[selectedPatente] || [];
+    const item = items.find(x => x.id === id) || { id, subestado: '', producto: '' };
+
+    const card = document.createElement('div');
+    card.className = 'id-card';
+    card.id = `card-${id}`;
+    card.innerHTML = `
+      <div class="id-card-header" onclick="toggleCard('${id}')">
+        <div class="id-card-left">
+          <div>
+            <div class="id-number">${id}</div>
+            <div class="id-product">${item.producto || '—'}</div>
+          </div>
+        </div>
+        <div class="id-status status-pending" id="status-badge-${id}">Pendiente</div>
+      </div>
+      <div class="id-card-body" id="body-${id}">
+
+        ${item.subestado ? `
+        <div style="margin-top:14px; padding:8px 12px; background:rgba(255,165,2,0.08); border-radius:6px; border-left:3px solid var(--warning); font-size:12px; color:var(--text2);">
+          <span style="color:var(--warning); font-weight:600;">Subestado:</span> ${item.subestado}
+        </div>` : ''}
+
+        <!-- Estado del producto -->
+        <div class="field-group">
+          <div class="field-label">Estado del Producto</div>
+          <div class="estado-selector">
+            <button class="estado-btn" onclick="setEstado('${id}', 'Entre')" id="btn-entre-${id}">📦 Entre</button>
+            <button class="estado-btn" onclick="setEstado('${id}', 'Nuevo')" id="btn-nuevo-${id}">✨ Nuevo</button>
+            <button class="estado-btn" onclick="setEstado('${id}', 'Con Daños')" id="btn-danado-${id}">⚠️ Con Daños</button>
+          </div>
+        </div>
+
+        <!-- Cantidad de bultos -->
+        <div class="field-group">
+          <div class="field-label">Cantidad de Bultos Recibidos</div>
+          <input
+            type="number"
+            class="bultos-input"
+            id="bultos-${id}"
+            min="1"
+            max="999"
+            placeholder="Ej: 3"
+            oninput="onBultosChange('${id}')"
+          >
+        </div>
+
+        <!-- Tipo de daño (solo para "Con Daños") -->
+        <div class="dano-section" id="dano-${id}">
+          <div class="field-label">Tipo de Daño</div>
+          <select id="tipoDano-${id}" onchange="onTipoDanoChange('${id}')">
+            <option value="">— Selecciona el tipo —</option>
+            <option value="Golpe">Golpe</option>
+            <option value="Rayado">Rayado</option>
+            <option value="Rotura parcial">Rotura parcial</option>
+            <option value="Rotura total">Rotura total</option>
+            <option value="Mojado">Mojado/Húmedo</option>
+            <option value="Embalaje dañado">Embalaje dañado</option>
+            <option value="Falta de piezas">Falta de piezas</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+
+        <!-- Fotos: ocultas para "Nuevo", visibles para "Entre" y "Con Daños" -->
+        <div class="field-group photo-upload" id="fotos-section-${id}" style="display:none;">
+          <div class="field-label">
+            Fotografías de Respaldo
+            <span id="fotos-req-${id}" style="color:var(--danger); font-size:10px; margin-left:6px;"></span>
+          </div>
+          <div class="photo-drop" id="drop-${id}"
+               ondragover="onDragOver(event, '${id}')"
+               ondragleave="onDragLeave('${id}')"
+               ondrop="onDrop(event, '${id}')">
+            <input type="file" accept="image/*" multiple capture="environment" onchange="onFileInput(event, '${id}')">
+            <div class="photo-drop-icon">📷</div>
+            <div class="photo-drop-text">
+              <strong>Toca para fotografiar</strong><br>o arrastra imágenes aquí
+            </div>
+          </div>
+          <div class="photos-preview" id="preview-${id}"></div>
+        </div>
+
+        <!-- Observación -->
+        <div class="field-group">
+          <div class="field-label">Observación</div>
+          <textarea id="obs-${id}" placeholder="Escribe alguna observación adicional (opcional)..."
+                    oninput="onObsChange('${id}')"></textarea>
+        </div>
+
+        <!-- Confirmar -->
+        <button class="btn btn-primary" onclick="marcarListo('${id}')" id="btn-listo-${id}" disabled style="margin-top:4px;">
+          Confirmar esta orden →
+        </button>
+
+      </div>
+    `;
+    container.appendChild(card);
+
+    if (id === selectedIds[0]) toggleCard(id);
+  });
+}
+
+function toggleCard(id) {
+  document.getElementById(`body-${id}`).classList.toggle('open');
+}
+
+function setEstado(id, estado) {
+  rendiciones[id].estado = estado;
+
+  ['entre','nuevo','danado'].forEach(e => {
+    document.getElementById(`btn-${e}-${id}`).className = 'estado-btn';
+  });
+
+  const danoSection  = document.getElementById(`dano-${id}`);
+  const fotosSection = document.getElementById(`fotos-section-${id}`);
+  const fotosReq     = document.getElementById(`fotos-req-${id}`);
+
+  if (estado === 'Nuevo') {
+    document.getElementById(`btn-nuevo-${id}`).className = 'estado-btn selected-nuevo';
+    danoSection.classList.remove('visible');
+    fotosSection.style.display = 'none';   // ocultar fotos
+  } else if (estado === 'Entre') {
+    document.getElementById(`btn-entre-${id}`).className = 'estado-btn selected-entre';
+    danoSection.classList.remove('visible');
+    fotosSection.style.display = 'block';  // fotos opcionales
+    fotosReq.textContent = '(opcional)';
+  } else if (estado === 'Con Daños') {
+    document.getElementById(`btn-danado-${id}`).className = 'estado-btn selected-danado';
+    danoSection.classList.add('visible');
+    fotosSection.style.display = 'block';  // fotos obligatorias
+    fotosReq.textContent = '* obligatorio';
+  }
+
+  checkCardComplete(id);
+}
+
+function onBultosChange(id) {
+  const val = parseInt(document.getElementById(`bultos-${id}`).value, 10);
+  rendiciones[id].bultos = isNaN(val) || val < 1 ? 0 : val;
+  checkCardComplete(id);
+}
+
+function onTipoDanoChange(id) {
+  rendiciones[id].tiposDano = document.getElementById(`tipoDano-${id}`).value;
+  checkCardComplete(id);
+}
+
+function onObsChange(id) {
+  rendiciones[id].observacion = document.getElementById(`obs-${id}`).value;
+}
+
+function onFileInput(event, id) {
+  addPhotos(id, Array.from(event.target.files));
+}
+
+function onDragOver(e, id) {
+  e.preventDefault();
+  document.getElementById(`drop-${id}`).classList.add('dragover');
+}
+
+function onDragLeave(id) {
+  document.getElementById(`drop-${id}`).classList.remove('dragover');
+}
+
+function onDrop(e, id) {
+  e.preventDefault();
+  document.getElementById(`drop-${id}`).classList.remove('dragover');
+  addPhotos(id, Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+}
+
+function addPhotos(id, files) {
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      compressPhoto(e.target.result).then(compressed => {
+        rendiciones[id].fotosData.push(compressed);
+        rendiciones[id].fotos.push(file.name);
+        renderPhotoPreviews(id);
+        checkCardComplete(id);
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Comprime la foto antes de enviarla (máx 1200px, calidad 75%)
+function compressPhoto(dataURL, maxDim = 1200, quality = 0.75) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataURL;
+  });
+}
+
+function renderPhotoPreviews(id) {
+  const preview = document.getElementById(`preview-${id}`);
+  preview.innerHTML = '';
+  rendiciones[id].fotosData.forEach((data, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'photo-thumb-wrap';
+    wrap.innerHTML = `
+      <img src="${data}" alt="foto ${idx+1}">
+      <button class="photo-remove" onclick="removePhoto('${id}', ${idx})">×</button>
+    `;
+    preview.appendChild(wrap);
+  });
+}
+
+function removePhoto(id, idx) {
+  rendiciones[id].fotosData.splice(idx, 1);
+  rendiciones[id].fotos.splice(idx, 1);
+  renderPhotoPreviews(id);
+  checkCardComplete(id);
+}
+
+function checkCardComplete(id) {
+  const r = rendiciones[id];
+  let ok = r.estado !== '' && r.bultos > 0;
+
+  if (r.estado === 'Con Daños') {
+    if (!r.tiposDano) ok = false;
+    if (r.fotosData.length === 0) ok = false;  // fotos obligatorias con daños
+  }
+  // "Nuevo" → sin fotos. "Entre" → fotos opcionales.
+
+  document.getElementById(`btn-listo-${id}`).disabled = !ok;
+  return ok;
+}
+
+function marcarListo(id) {
+  if (!checkCardComplete(id)) return;
+
+  const card  = document.getElementById(`card-${id}`);
+  const badge = document.getElementById(`status-badge-${id}`);
+  card.classList.add('rendido');
+  badge.className = 'id-status status-done';
+  badge.textContent = '✓ Rendido';
+
+  document.getElementById(`body-${id}`).classList.remove('open');
+
+  const btn = document.getElementById(`btn-listo-${id}`);
+  btn.disabled = true;
+  btn.textContent = '✓ Confirmado';
+  btn.style.cssText += '; background:rgba(0,255,136,0.2); color:var(--accent3); border:1px solid var(--accent3);';
+
+  rendiciones[id].listo = true;
+  updateProgress();
+  showToast(`Orden ${id} confirmada ✓`, 'success');
+
+  const nextPending = selectedIds.find(sid => !rendiciones[sid].listo && sid !== id);
+  if (nextPending) {
+    setTimeout(() => {
+      document.getElementById(`body-${nextPending}`).classList.add('open');
+      document.getElementById(`card-${nextPending}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+  }
+}
+
+function updateProgress() {
+  const total = selectedIds.length;
+  const done  = selectedIds.filter(id => rendiciones[id]?.listo).length;
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  document.getElementById('progressFill').style.width = `${pct}%`;
+  document.getElementById('progressCount').textContent = `${done}/${total}`;
+  document.getElementById('btnEnviar').disabled = done < total;
+}
+
+// ─── ENVÍO A GAS + GITHUB ─────────────────────────────────────
+async function enviarRendicion() {
+  const now = new Date();
+  const timestamp = now.toLocaleString('es-CL');
+
+  const record = {
+    timestamp,
+    fecha: toISOLocal(now),
+    bodeguero: bodegueroNombre,
+    patente: selectedPatente,
+    totalOrdenes: selectedIds.length,
+    ordenes: selectedIds.map(id => {
+      const r = rendiciones[id];
+      const items = rendicionData[selectedPatente] || [];
+      const item  = items.find(x => x.id === id) || {};
+      return {
+        id,
+        producto:       item.producto   || '',
+        subestado:      item.subestado  || '',
+        estadoProducto: r.estado,
+        tipoDano:       r.tiposDano     || '',
+        observacion:    r.observacion   || '',
+        bultos:         r.bultos,
+        fotos:          r.fotosData     // base64 comprimidas
+      };
+    })
+  };
+
+  // Guardar en historial local
+  allRendiciones.push(record);
+  localStorage.setItem('rendicionHistory_opl', JSON.stringify(allRendiciones));
+
+  // Deshabilitar botón mientras envía
+  const btn = document.getElementById('btnEnviar');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) {
+    // Sin GAS configurado: mostrar éxito de todos modos (guardado local)
+    mostrarExito(record, '⚠ Guardado localmente (GAS no configurado)');
+    return;
+  }
+
+  try {
+    // no-cors: el navegador no bloquea el POST hacia GAS, pero no podemos leer la respuesta
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify(record)
+    });
+    mostrarExito(record, '✓ Datos enviados al sistema');
+  } catch (e) {
+    showToast('Error al enviar: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✓ Enviar Rendición Completa';
+  }
+}
+
+function mostrarExito(record, statusMsg) {
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('successScreen').classList.remove('hidden');
+  document.getElementById('successScreen').classList.add('visible');
+
+  document.getElementById('receipt').innerHTML = `
+    <strong>RENDICIÓN REGISTRADA</strong><br>
+    ─────────────────────<br>
+    Fecha: ${record.timestamp}<br>
+    Bodeguero: <strong style="color:var(--accent3)">${record.bodeguero}</strong><br>
+    Patente: <strong>${record.patente}</strong><br>
+    Total órdenes: <strong>${record.totalOrdenes}</strong><br>
+    ─────────────────────<br>
+    ${record.ordenes.map(o =>
+      `${o.id} · ${o.estadoProducto}${o.tipoDano ? ' · ' + o.tipoDano : ''} · ${o.bultos} bulto(s)${o.fotos.length ? ' · ' + o.fotos.length + ' foto(s)' : ''}`
+    ).join('<br>')}
+    <br>─────────────────────<br>
+    <span style="color:var(--accent3)">${statusMsg}</span>
+  `;
+}
+
+function nuevaRendicion() {
+  document.getElementById('mainApp').classList.remove('hidden');
+  document.getElementById('successScreen').classList.remove('visible');
+  setTimeout(() => { document.getElementById('successScreen').style.display = ''; }, 300);
+
+  document.getElementById('step1').classList.add('active');
+  document.getElementById('step1').classList.remove('completed');
+  document.getElementById('step1').querySelector('.step-num').textContent = '1';
+  document.getElementById('patenteSelect').value = '';
+  document.getElementById('patenteInfo').classList.add('hidden');
+  document.getElementById('btnConfirmarPatente').disabled = true;
+
+  document.getElementById('step2').classList.add('hidden');
+  document.getElementById('step3').classList.add('hidden');
+  document.getElementById('progressBar').classList.add('hidden');
+  document.getElementById('idsContainer').classList.add('hidden');
+  document.getElementById('finalSection').classList.add('hidden');
+
+  selectedPatente = '';
+  selectedIds = [];
+  rendiciones = {};
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── ADMIN TOGGLE ─────────────────────────────────────────────
+function toggleAdmin(e) {
+  e.preventDefault();
+  document.getElementById('adminPanel').classList.toggle('hidden');
+}
+
+// ─── TOAST ────────────────────────────────────────────────────
+function showToast(msg, type = '') {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = `toast ${type} show`;
+  setTimeout(() => toast.classList.remove('show'), 2800);
+}
+
+// ─── START ────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
