@@ -1108,6 +1108,7 @@ let selectedPatente = '';
 let selectedIds = [];
 let rendiciones = {};
 let ordenesListas = {};
+let selectedGroupedItem = null;
 let allRendiciones = [];
 let bodegueroNombre = '';
 
@@ -1365,16 +1366,32 @@ function volverPaso1() {
 }
 
 // ─── STEP 2 ────────────────────────────────────────────────────
+function buildGroupedOrders(patente) {
+  const items = rendicionData[patente] || [];
+  const seen = {};
+  const result = [];
+  items.forEach(item => {
+    if (!seen[item.id]) {
+      seen[item.id] = { id: item.id, producto: item.producto, subestado: item.subestado, count: 0 };
+      result.push(seen[item.id]);
+    }
+    seen[item.id].count++;
+  });
+  return result;
+}
+
 function populateIdSelect() {
   const sel = document.getElementById('idSelect');
-  const items = rendicionData[selectedPatente] || [];
+  const groups = buildGroupedOrders(selectedPatente);
   sel.innerHTML = '<option value="">— Selecciona una orden —</option>';
-
-  items.forEach((item, idx) => {
-    if (ordenesListas[item.id]) return; // ya completada
+  groups.forEach((g, idx) => {
+    if (ordenesListas[g.id]) return;
     const opt = document.createElement('option');
     opt.value = idx;
-    opt.textContent = `${item.id} · ${item.producto?.substring(0,35) || ''}`;
+    const prod = (g.producto || '').substring(0, 32);
+    opt.textContent = g.count > 1
+      ? `${g.id} · ${prod} (x${g.count})`
+      : `${g.id} · ${prod}`;
     sel.appendChild(opt);
   });
 }
@@ -1384,19 +1401,22 @@ function agregarID() {
   const idx = sel.value;
   if (!idx && idx !== 0) return;
 
-  const item = rendicionData[selectedPatente][idx];
-  if (!item) return;
+  const groups = buildGroupedOrders(selectedPatente);
+  const group = groups[parseInt(idx)];
+  if (!group) return;
 
-  selectedIds = [item.id];
+  selectedGroupedItem = group;
+  selectedIds = [group.id];
 
   sel.value = '';
   populateIdSelect();
   renderSelectedIds();
-  document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
+  document.getElementById('btnIniciarRendicion').disabled = false;
 }
 
 function quitarID(id) {
   selectedIds = selectedIds.filter(x => x !== id);
+  if (selectedGroupedItem && selectedGroupedItem.id === id) selectedGroupedItem = null;
   populateIdSelect();
   renderSelectedIds();
   document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
@@ -1406,9 +1426,11 @@ function renderSelectedIds() {
   const container = document.getElementById('selectedIds');
   container.innerHTML = '';
   selectedIds.forEach(id => {
+    const count = selectedGroupedItem && selectedGroupedItem.id === id ? selectedGroupedItem.count : 1;
     const tag = document.createElement('div');
     tag.style.cssText = 'display:inline-flex; align-items:center; gap:6px; background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3); border-radius:20px; padding:4px 10px; font-family:"DM Mono",monospace; font-size:11px; color:var(--accent);';
-    tag.innerHTML = `${id} <button onclick="quitarID('${id}')" style="background:none; border:none; color:var(--accent2); cursor:pointer; font-size:14px; line-height:1; padding:0;">×</button>`;
+    const badge = count > 1 ? ` <span style="background:var(--accent2); color:#fff; border-radius:10px; padding:1px 6px; font-size:10px; font-weight:600;">x${count}</span>` : '';
+    tag.innerHTML = `${id}${badge} <button onclick="quitarID('${id}')" style="background:none; border:none; color:var(--accent2); cursor:pointer; font-size:14px; line-height:1; padding:0;">×</button>`;
     container.appendChild(tag);
   });
 }
@@ -1423,7 +1445,8 @@ function iniciarRendicion() {
 
   rendiciones = {};
   selectedIds.forEach(id => {
-    rendiciones[id] = { estado: '', tiposDano: '', observacion: '', bultos: 0, fotos: [], fotosData: [] };
+    const count = selectedGroupedItem && selectedGroupedItem.id === id ? selectedGroupedItem.count : 1;
+    rendiciones[id] = { estado: '', tiposDano: '', observacion: '', bultos: 0, fotos: [], fotosData: [], count, grupoMode: null, cantDanados: 0, estadoOK: '' };
   });
 
   renderIDCards();
@@ -1443,28 +1466,104 @@ function renderIDCards() {
   selectedIds.forEach(id => {
     const items = rendicionData[selectedPatente] || [];
     const item = items.find(x => x.id === id) || { id, subestado: '', producto: '' };
+    const r = rendiciones[id];
 
     const card = document.createElement('div');
     card.className = 'id-card';
     card.id = `card-${id}`;
-    card.innerHTML = `
-      <div class="id-card-header" onclick="toggleCard('${id}')">
-        <div class="id-card-left">
-          <div>
-            <div class="id-number">${id}</div>
-            <div class="id-product">${item.producto || '—'}</div>
+
+    const subestedoChip = item.subestado
+      ? `<div style="margin-top:14px; padding:8px 12px; background:rgba(255,165,2,0.08); border-radius:6px; border-left:3px solid var(--warning); font-size:12px; color:var(--text2);"><span style="color:var(--warning); font-weight:600;">Subestado:</span> ${item.subestado}</div>`
+      : '';
+
+    const countBadge = r.count > 1
+      ? `<span style="margin-left:8px; background:var(--accent2); color:#fff; border-radius:10px; padding:2px 8px; font-size:12px; font-family:'DM Mono',monospace; font-weight:700;">x${r.count}</span>`
+      : '';
+
+    let bodyHTML;
+    if (r.count > 1) {
+      bodyHTML = `
+        ${subestedoChip}
+        <div class="field-group">
+          <div class="field-label" style="font-size:13px;">Este ID tiene <strong style="color:var(--accent)">${r.count} unidades</strong>. ¿Cómo están?</div>
+          <div class="estado-selector" style="margin-top:8px;">
+            <button class="estado-btn" id="btn-todosok-${id}" onclick="setGrupoMode('${id}','todos_ok')">✓ Todas OK</button>
+            <button class="estado-btn" id="btn-haydanados-${id}" onclick="setGrupoMode('${id}','hay_danados')">⚠️ Hay dañadas</button>
           </div>
         </div>
-        <div class="id-status status-pending" id="status-badge-${id}">Pendiente</div>
-      </div>
-      <div class="id-card-body" id="body-${id}">
 
-        ${item.subestado ? `
-        <div style="margin-top:14px; padding:8px 12px; background:rgba(255,165,2,0.08); border-radius:6px; border-left:3px solid var(--warning); font-size:12px; color:var(--text2);">
-          <span style="color:var(--warning); font-weight:600;">Subestado:</span> ${item.subestado}
-        </div>` : ''}
+        <div id="section-todosok-${id}" style="display:none;">
+          <div class="field-group">
+            <div class="field-label">Estado del Producto</div>
+            <div class="estado-selector">
+              <button class="estado-btn" id="btn-gok-entre-${id}" onclick="setEstadoGrupo('${id}','Entre')">📦 Entre</button>
+              <button class="estado-btn" id="btn-gok-nuevo-${id}" onclick="setEstadoGrupo('${id}','Nuevo')">✨ Nuevo</button>
+            </div>
+          </div>
+        </div>
 
-        <!-- Estado del producto -->
+        <div id="section-haydanados-${id}" style="display:none;">
+          <div class="field-group">
+            <div class="field-label">¿Cuántas unidades están dañadas? (máx ${r.count})</div>
+            <input type="number" class="bultos-input" id="cantDanados-${id}" min="1" max="${r.count}" placeholder="Ej: 1" oninput="onCantDanadosChange('${id}')">
+          </div>
+          <div id="section-estadoOK-${id}" style="display:none;">
+            <div class="field-group">
+              <div class="field-label">Estado de las unidades sin daño</div>
+              <div class="estado-selector">
+                <button class="estado-btn" id="btn-gok2-entre-${id}" onclick="setEstadoOK('${id}','Entre')">📦 Entre</button>
+                <button class="estado-btn" id="btn-gok2-nuevo-${id}" onclick="setEstadoOK('${id}','Nuevo')">✨ Nuevo</button>
+              </div>
+            </div>
+          </div>
+          <div class="dano-section visible" id="dano-${id}">
+            <div class="field-label">Tipo de Daño de las unidades dañadas</div>
+            <select id="tipoDano-${id}" onchange="onTipoDanoChange('${id}')">
+              <option value="">— Selecciona el tipo —</option>
+              <option value="Golpe">Golpe</option>
+              <option value="Rayado">Rayado</option>
+              <option value="Rotura parcial">Rotura parcial</option>
+              <option value="Rotura total">Rotura total</option>
+              <option value="Mojado">Mojado/Húmedo</option>
+              <option value="Embalaje dañado">Embalaje dañado</option>
+              <option value="Falta de piezas">Falta de piezas</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div class="field-group photo-upload" id="fotos-section-${id}">
+            <div class="field-label">
+              Fotografías de las unidades dañadas
+              <span style="color:var(--danger); font-size:10px; margin-left:6px;">* obligatorio</span>
+            </div>
+            <div class="photo-drop" id="drop-${id}"
+                 ondragover="onDragOver(event,'${id}')"
+                 ondragleave="onDragLeave('${id}')"
+                 ondrop="onDrop(event,'${id}')">
+              <input type="file" accept="image/*" multiple capture="environment" onchange="onFileInput(event,'${id}')">
+              <div class="photo-drop-icon">📷</div>
+              <div class="photo-drop-text"><strong>Toca para fotografiar</strong><br>o arrastra imágenes aquí</div>
+            </div>
+            <div class="photos-preview" id="preview-${id}"></div>
+          </div>
+        </div>
+
+        <div id="shared-${id}" style="display:none;">
+          <div class="field-group">
+            <div class="field-label">Cantidad de Bultos Recibidos</div>
+            <input type="number" class="bultos-input" id="bultos-${id}" min="1" max="999" placeholder="${r.count}" oninput="onBultosChange('${id}')">
+          </div>
+          <div class="field-group">
+            <div class="field-label">Observación</div>
+            <textarea id="obs-${id}" placeholder="Escribe alguna observación (opcional)..." oninput="onObsChange('${id}')"></textarea>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="marcarListo('${id}')" id="btn-listo-${id}" disabled style="margin-top:4px;">
+          Confirmar esta orden →
+        </button>`;
+    } else {
+      bodyHTML = `
+        ${subestedoChip}
         <div class="field-group">
           <div class="field-label">Estado del Producto</div>
           <div class="estado-selector">
@@ -1473,22 +1572,10 @@ function renderIDCards() {
             <button class="estado-btn" onclick="setEstado('${id}', 'Con Daños')" id="btn-danado-${id}">⚠️ Con Daños</button>
           </div>
         </div>
-
-        <!-- Cantidad de bultos -->
         <div class="field-group">
           <div class="field-label">Cantidad de Bultos Recibidos</div>
-          <input
-            type="number"
-            class="bultos-input"
-            id="bultos-${id}"
-            min="1"
-            max="999"
-            placeholder="Ej: 3"
-            oninput="onBultosChange('${id}')"
-          >
+          <input type="number" class="bultos-input" id="bultos-${id}" min="1" max="999" placeholder="Ej: 3" oninput="onBultosChange('${id}')">
         </div>
-
-        <!-- Tipo de daño (solo para "Con Daños") -->
         <div class="dano-section" id="dano-${id}">
           <div class="field-label">Tipo de Daño</div>
           <select id="tipoDano-${id}" onchange="onTipoDanoChange('${id}')">
@@ -1503,8 +1590,6 @@ function renderIDCards() {
             <option value="Otro">Otro</option>
           </select>
         </div>
-
-        <!-- Fotos: ocultas para "Nuevo", visibles para "Entre" y "Con Daños" -->
         <div class="field-group photo-upload" id="fotos-section-${id}" style="display:none;">
           <div class="field-label">
             Fotografías de Respaldo
@@ -1516,29 +1601,34 @@ function renderIDCards() {
                ondrop="onDrop(event, '${id}')">
             <input type="file" accept="image/*" multiple capture="environment" onchange="onFileInput(event, '${id}')">
             <div class="photo-drop-icon">📷</div>
-            <div class="photo-drop-text">
-              <strong>Toca para fotografiar</strong><br>o arrastra imágenes aquí
-            </div>
+            <div class="photo-drop-text"><strong>Toca para fotografiar</strong><br>o arrastra imágenes aquí</div>
           </div>
           <div class="photos-preview" id="preview-${id}"></div>
         </div>
-
-        <!-- Observación -->
         <div class="field-group">
           <div class="field-label">Observación</div>
-          <textarea id="obs-${id}" placeholder="Escribe alguna observación adicional (opcional)..."
-                    oninput="onObsChange('${id}')"></textarea>
+          <textarea id="obs-${id}" placeholder="Escribe alguna observación adicional (opcional)..." oninput="onObsChange('${id}')"></textarea>
         </div>
-
-        <!-- Confirmar -->
         <button class="btn btn-primary" onclick="marcarListo('${id}')" id="btn-listo-${id}" disabled style="margin-top:4px;">
           Confirmar esta orden →
-        </button>
+        </button>`;
+    }
 
+    card.innerHTML = `
+      <div class="id-card-header" onclick="toggleCard('${id}')">
+        <div class="id-card-left">
+          <div>
+            <div class="id-number">${id}${countBadge}</div>
+            <div class="id-product">${item.producto || '—'}</div>
+          </div>
+        </div>
+        <div class="id-status status-pending" id="status-badge-${id}">Pendiente</div>
       </div>
-    `;
-    container.appendChild(card);
+      <div class="id-card-body" id="body-${id}">
+        ${bodyHTML}
+      </div>`;
 
+    container.appendChild(card);
     if (id === selectedIds[0]) toggleCard(id);
   });
 }
@@ -1574,6 +1664,57 @@ function setEstado(id, estado) {
     fotosReq.textContent = '* obligatorio';
   }
 
+  checkCardComplete(id);
+}
+
+function setGrupoMode(id, mode) {
+  rendiciones[id].grupoMode = mode;
+  document.getElementById(`btn-todosok-${id}`).className = mode === 'todos_ok' ? 'estado-btn selected-nuevo' : 'estado-btn';
+  document.getElementById(`btn-haydanados-${id}`).className = mode === 'hay_danados' ? 'estado-btn selected-danado' : 'estado-btn';
+  document.getElementById(`section-todosok-${id}`).style.display = mode === 'todos_ok' ? 'block' : 'none';
+  document.getElementById(`section-haydanados-${id}`).style.display = mode === 'hay_danados' ? 'block' : 'none';
+  document.getElementById(`shared-${id}`).style.display = 'block';
+  // pre-fill bultos con la cantidad
+  const bultosEl = document.getElementById(`bultos-${id}`);
+  if (bultosEl && !rendiciones[id].bultos) {
+    bultosEl.value = rendiciones[id].count;
+    rendiciones[id].bultos = rendiciones[id].count;
+  }
+  if (mode === 'todos_ok') {
+    rendiciones[id].cantDanados = 0;
+    rendiciones[id].estadoOK = '';
+  } else {
+    rendiciones[id].estado = '';
+  }
+  checkCardComplete(id);
+}
+
+function setEstadoGrupo(id, estado) {
+  rendiciones[id].estado = estado;
+  rendiciones[id].estadoOK = estado;
+  ['entre','nuevo'].forEach(e => { document.getElementById(`btn-gok-${e}-${id}`).className = 'estado-btn'; });
+  document.getElementById(`btn-gok-${estado === 'Entre' ? 'entre' : 'nuevo'}-${id}`).className = `estado-btn selected-${estado === 'Entre' ? 'entre' : 'nuevo'}`;
+  checkCardComplete(id);
+}
+
+function setEstadoOK(id, estado) {
+  rendiciones[id].estadoOK = estado;
+  ['entre','nuevo'].forEach(e => { document.getElementById(`btn-gok2-${e}-${id}`).className = 'estado-btn'; });
+  document.getElementById(`btn-gok2-${estado === 'Entre' ? 'entre' : 'nuevo'}-${id}`).className = `estado-btn selected-${estado === 'Entre' ? 'entre' : 'nuevo'}`;
+  checkCardComplete(id);
+}
+
+function onCantDanadosChange(id) {
+  const val = parseInt(document.getElementById(`cantDanados-${id}`).value, 10);
+  const count = rendiciones[id].count;
+  rendiciones[id].cantDanados = isNaN(val) || val < 1 ? 0 : Math.min(val, count);
+  const showOK = rendiciones[id].cantDanados > 0 && rendiciones[id].cantDanados < count;
+  document.getElementById(`section-estadoOK-${id}`).style.display = showOK ? 'block' : 'none';
+  if (rendiciones[id].cantDanados >= count) {
+    rendiciones[id].estadoOK = 'N/A';
+  } else if (rendiciones[id].estadoOK === 'N/A') {
+    rendiciones[id].estadoOK = '';
+  }
   checkCardComplete(id);
 }
 
@@ -1665,13 +1806,22 @@ function removePhoto(id, idx) {
 
 function checkCardComplete(id) {
   const r = rendiciones[id];
-  let ok = r.estado !== '' && r.bultos > 0;
+  let ok = false;
 
-  if (r.estado === 'Con Daños') {
-    if (!r.tiposDano) ok = false;
-    if (r.fotosData.length === 0) ok = false;  // fotos obligatorias con daños
+  if (r.count > 1) {
+    if (r.grupoMode === 'todos_ok') {
+      ok = r.estado !== '' && r.bultos > 0;
+    } else if (r.grupoMode === 'hay_danados') {
+      ok = r.cantDanados > 0 && r.bultos > 0 && r.tiposDano !== '' && r.fotosData.length > 0;
+      if (r.cantDanados < r.count && !r.estadoOK) ok = false;
+    }
+  } else {
+    ok = r.estado !== '' && r.bultos > 0;
+    if (r.estado === 'Con Daños') {
+      if (!r.tiposDano) ok = false;
+      if (r.fotosData.length === 0) ok = false;
+    }
   }
-  // "Nuevo" → sin fotos. "Entre" → fotos opcionales.
 
   document.getElementById(`btn-listo-${id}`).disabled = !ok;
   return ok;
@@ -1680,24 +1830,44 @@ function checkCardComplete(id) {
 function marcarListo(id) {
   if (!checkCardComplete(id)) return;
 
-  // Guardar datos de esta orden en ordenesListas
   const r = rendiciones[id];
   const items = rendicionData[selectedPatente] || [];
   const item = items.find(x => x.id === id) || {};
+
+  let estadoLabel, cantidadOK, cantidadDanados;
+  if (r.count > 1) {
+    if (r.grupoMode === 'todos_ok') {
+      estadoLabel = r.estado;
+      cantidadOK = r.count;
+      cantidadDanados = 0;
+    } else {
+      cantidadDanados = r.cantDanados;
+      cantidadOK = r.count - r.cantDanados;
+      estadoLabel = `${cantidadDanados} de ${r.count} con daños`;
+    }
+  } else {
+    estadoLabel = r.estado;
+    cantidadOK = r.estado !== 'Con Daños' ? 1 : 0;
+    cantidadDanados = r.estado === 'Con Daños' ? 1 : 0;
+  }
+
   ordenesListas[id] = {
     id,
-    producto:       item.producto   || '',
-    subestado:      item.subestado  || '',
-    estadoProducto: r.estado,
-    tipoDano:       r.tiposDano     || '',
-    observacion:    r.observacion   || '',
-    bultos:         r.bultos,
-    fotos:          r.fotosData
+    producto:          item.producto  || '',
+    subestado:         item.subestado || '',
+    estadoProducto:    estadoLabel,
+    estadoOK:          r.count > 1 && r.grupoMode === 'hay_danados' ? (r.estadoOK || '') : '',
+    tipoDano:          r.tiposDano   || '',
+    observacion:       r.observacion || '',
+    bultos:            r.bultos,
+    cantidad:          r.count,
+    cantidadOK,
+    cantidadDanados,
+    fotos:             r.fotosData
   };
 
   showToast(`Orden ${id} confirmada ✓`, 'success');
 
-  // Volver al paso 2 para seleccionar la siguiente orden
   setTimeout(() => {
     document.getElementById('step3').classList.add('hidden');
     document.getElementById('step3').classList.remove('active');
@@ -1706,6 +1876,7 @@ function marcarListo(id) {
     document.getElementById('finalSection').classList.add('hidden');
 
     selectedIds = [];
+    selectedGroupedItem = null;
     populateIdSelect();
     renderSelectedIds();
     actualizarBotonesStep2();
@@ -1717,7 +1888,7 @@ function marcarListo(id) {
 }
 
 function actualizarBotonesStep2() {
-  const total = (rendicionData[selectedPatente] || []).length;
+  const total = buildGroupedOrders(selectedPatente).length;
   const done = Object.keys(ordenesListas).length;
   const progEl = document.getElementById('step2Progress');
   if (progEl) progEl.textContent = done > 0 ? `${done}/${total} órdenes completadas` : '';
