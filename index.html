@@ -402,6 +402,12 @@
     color: var(--accent);
   }
 
+  .estado-btn.selected-noretirado {
+    background: rgba(160,160,160,0.15);
+    border-color: #aaaaaa;
+    color: #aaaaaa;
+  }
+
   .photo-upload { margin-top: 14px; }
 
   .photo-drop {
@@ -1586,6 +1592,7 @@ function renderIDCards() {
             <button class="estado-btn" onclick="setEstado('${id}', 'Entre')" id="btn-entre-${id}">📦 Entre</button>
             <button class="estado-btn" onclick="setEstado('${id}', 'Nuevo')" id="btn-nuevo-${id}">✨ Nuevo</button>
             <button class="estado-btn" onclick="setEstado('${id}', 'Con Daños')" id="btn-danado-${id}">⚠️ Con Daños</button>
+            <button class="estado-btn" onclick="setEstado('${id}', 'No Retirado')" id="btn-noretirado-${id}">🚫 No Retirado</button>
           </div>
         </div>
         <div class="field-group">
@@ -1656,28 +1663,39 @@ function toggleCard(id) {
 function setEstado(id, estado) {
   rendiciones[id].estado = estado;
 
-  ['entre','nuevo','danado'].forEach(e => {
+  ['entre','nuevo','danado','noretirado'].forEach(e => {
     document.getElementById(`btn-${e}-${id}`).className = 'estado-btn';
   });
 
   const danoSection  = document.getElementById(`dano-${id}`);
   const fotosSection = document.getElementById(`fotos-section-${id}`);
   const fotosReq     = document.getElementById(`fotos-req-${id}`);
+  const bultosInput  = document.getElementById(`bultos-${id}`);
 
   if (estado === 'Nuevo') {
     document.getElementById(`btn-nuevo-${id}`).className = 'estado-btn selected-nuevo';
     danoSection.classList.remove('visible');
-    fotosSection.style.display = 'none';   // ocultar fotos
+    fotosSection.style.display = 'none';
+    bultosInput.disabled = false;
   } else if (estado === 'Entre') {
     document.getElementById(`btn-entre-${id}`).className = 'estado-btn selected-entre';
     danoSection.classList.remove('visible');
-    fotosSection.style.display = 'block';  // fotos opcionales
+    fotosSection.style.display = 'block';
     fotosReq.textContent = '(opcional)';
+    bultosInput.disabled = false;
   } else if (estado === 'Con Daños') {
     document.getElementById(`btn-danado-${id}`).className = 'estado-btn selected-danado';
     danoSection.classList.add('visible');
-    fotosSection.style.display = 'block';  // fotos obligatorias
+    fotosSection.style.display = 'block';
     fotosReq.textContent = '* obligatorio';
+    bultosInput.disabled = false;
+  } else if (estado === 'No Retirado') {
+    document.getElementById(`btn-noretirado-${id}`).className = 'estado-btn selected-noretirado';
+    danoSection.classList.remove('visible');
+    fotosSection.style.display = 'none';
+    bultosInput.value = '0';
+    rendiciones[id].bultos = 0;
+    bultosInput.disabled = true;
   }
 
   checkCardComplete(id);
@@ -1832,10 +1850,14 @@ function checkCardComplete(id) {
       if (r.cantDanados < r.count && !r.estadoOK) ok = false;
     }
   } else {
-    ok = r.estado !== '' && r.bultos > 0;
-    if (r.estado === 'Con Daños') {
-      if (!r.tiposDano) ok = false;
-      if (r.fotosData.length === 0) ok = false;
+    if (r.estado === 'No Retirado') {
+      ok = true;
+    } else {
+      ok = r.estado !== '' && r.bultos > 0;
+      if (r.estado === 'Con Daños') {
+        if (!r.tiposDano) ok = false;
+        if (r.fotosData.length === 0) ok = false;
+      }
     }
   }
 
@@ -1863,7 +1885,7 @@ function marcarListo(id) {
     }
   } else {
     estadoLabel = r.estado;
-    cantidadOK = r.estado !== 'Con Daños' ? 1 : 0;
+    cantidadOK = (r.estado !== 'Con Daños' && r.estado !== 'No Retirado') ? 1 : 0;
     cantidadDanados = r.estado === 'Con Daños' ? 1 : 0;
   }
 
