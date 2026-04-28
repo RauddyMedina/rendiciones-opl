@@ -50,6 +50,20 @@ function doGet(e) {
       filasDatos++;
     }
 
+    // Filtrar patentes ya rendidas hoy
+    const hoy = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const histSheet = ss.getSheetByName(TAB_HISTORIAL);
+    if (histSheet && histSheet.getLastRow() > 1) {
+      const hist = histSheet.getDataRange().getValues();
+      for (let i = 1; i < hist.length; i++) {
+        const fechaHist   = String(hist[i][1]).slice(0, 10); // col B = Fecha
+        const patenteHist = String(hist[i][3]).trim().toUpperCase(); // col D = Patente
+        if (fechaHist === hoy && result[patenteHist]) {
+          delete result[patenteHist];
+        }
+      }
+    }
+
     // Agregar metadata útil
     const meta = {
       total: filasDatos,
@@ -144,8 +158,12 @@ function guardarEnHistorial(payload, repo) {
     rows.forEach((r, i) => {
       const ruta = r[numCols - 1];
       const cell = sheet.getRange(startRow + i, numCols);
-      if (ruta.startsWith('http')) {
-        cell.setFormula(`=HYPERLINK("${ruta}","Ver fotos")`);
+      if (ruta.indexOf('http') === 0) {
+        const rich = SpreadsheetApp.newRichTextValue()
+          .setText('Ver fotos')
+          .setLinkUrl(ruta)
+          .build();
+        cell.setRichTextValue(rich);
       } else {
         cell.setValue(ruta);
       }
