@@ -1303,11 +1303,27 @@ function renderFechasExcepcion() {
 }
 
 // ─── PATENTE SELECT ────────────────────────────────────────────
+function getPatentesRendidasHoy() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const key = 'patentesRendidas_' + hoy;
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+}
+
+function marcarPatenteRendida(patente) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const key = 'patentesRendidas_' + hoy;
+  const lista = getPatentesRendidasHoy();
+  if (!lista.includes(patente)) lista.push(patente);
+  localStorage.setItem(key, JSON.stringify(lista));
+}
+
 function populatePatenteSelect() {
   const sel = document.getElementById('patenteSelect');
+  const rendidas = getPatentesRendidasHoy();
   const patentes = Object.keys(rendicionData).sort();
   sel.innerHTML = '<option value="">— Selecciona una patente —</option>';
   patentes.forEach(p => {
+    if (rendidas.includes(p)) return; // ya rendida hoy
     const count = rendicionData[p].length;
     const opt = document.createElement('option');
     opt.value = p;
@@ -2000,6 +2016,7 @@ async function enviarRendicion() {
 }
 
 function mostrarExito(record, statusMsg) {
+  marcarPatenteRendida(record.patente);
   document.getElementById('mainApp').classList.add('hidden');
   document.getElementById('successScreen').classList.remove('hidden');
   document.getElementById('successScreen').classList.add('visible');
