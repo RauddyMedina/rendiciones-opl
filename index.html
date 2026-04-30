@@ -402,12 +402,6 @@
     color: var(--accent);
   }
 
-  .estado-btn.selected-noretirado {
-    background: rgba(160,160,160,0.15);
-    border-color: #aaaaaa;
-    color: #aaaaaa;
-  }
-
   .photo-upload { margin-top: 14px; }
 
   .photo-drop {
@@ -1309,27 +1303,11 @@ function renderFechasExcepcion() {
 }
 
 // ─── PATENTE SELECT ────────────────────────────────────────────
-function getPatentesRendidasHoy() {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const key = 'patentesRendidas_' + hoy;
-  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
-}
-
-function marcarPatenteRendida(patente) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const key = 'patentesRendidas_' + hoy;
-  const lista = getPatentesRendidasHoy();
-  if (!lista.includes(patente)) lista.push(patente);
-  localStorage.setItem(key, JSON.stringify(lista));
-}
-
 function populatePatenteSelect() {
   const sel = document.getElementById('patenteSelect');
-  const rendidas = getPatentesRendidasHoy();
   const patentes = Object.keys(rendicionData).sort();
   sel.innerHTML = '<option value="">— Selecciona una patente —</option>';
   patentes.forEach(p => {
-    if (rendidas.includes(p)) return; // ya rendida hoy
     const count = rendicionData[p].length;
     const opt = document.createElement('option');
     opt.value = p;
@@ -1592,7 +1570,6 @@ function renderIDCards() {
             <button class="estado-btn" onclick="setEstado('${id}', 'Entre')" id="btn-entre-${id}">📦 Entre</button>
             <button class="estado-btn" onclick="setEstado('${id}', 'Nuevo')" id="btn-nuevo-${id}">✨ Nuevo</button>
             <button class="estado-btn" onclick="setEstado('${id}', 'Con Daños')" id="btn-danado-${id}">⚠️ Con Daños</button>
-            <button class="estado-btn" onclick="setEstado('${id}', 'No Retirado')" id="btn-noretirado-${id}">🚫 No Retirado</button>
           </div>
         </div>
         <div class="field-group">
@@ -1663,39 +1640,28 @@ function toggleCard(id) {
 function setEstado(id, estado) {
   rendiciones[id].estado = estado;
 
-  ['entre','nuevo','danado','noretirado'].forEach(e => {
+  ['entre','nuevo','danado'].forEach(e => {
     document.getElementById(`btn-${e}-${id}`).className = 'estado-btn';
   });
 
   const danoSection  = document.getElementById(`dano-${id}`);
   const fotosSection = document.getElementById(`fotos-section-${id}`);
   const fotosReq     = document.getElementById(`fotos-req-${id}`);
-  const bultosInput  = document.getElementById(`bultos-${id}`);
 
   if (estado === 'Nuevo') {
     document.getElementById(`btn-nuevo-${id}`).className = 'estado-btn selected-nuevo';
     danoSection.classList.remove('visible');
-    fotosSection.style.display = 'none';
-    bultosInput.disabled = false;
+    fotosSection.style.display = 'none';   // ocultar fotos
   } else if (estado === 'Entre') {
     document.getElementById(`btn-entre-${id}`).className = 'estado-btn selected-entre';
     danoSection.classList.remove('visible');
-    fotosSection.style.display = 'block';
+    fotosSection.style.display = 'block';  // fotos opcionales
     fotosReq.textContent = '(opcional)';
-    bultosInput.disabled = false;
   } else if (estado === 'Con Daños') {
     document.getElementById(`btn-danado-${id}`).className = 'estado-btn selected-danado';
     danoSection.classList.add('visible');
-    fotosSection.style.display = 'block';
+    fotosSection.style.display = 'block';  // fotos obligatorias
     fotosReq.textContent = '* obligatorio';
-    bultosInput.disabled = false;
-  } else if (estado === 'No Retirado') {
-    document.getElementById(`btn-noretirado-${id}`).className = 'estado-btn selected-noretirado';
-    danoSection.classList.remove('visible');
-    fotosSection.style.display = 'none';
-    bultosInput.value = '0';
-    rendiciones[id].bultos = 0;
-    bultosInput.disabled = true;
   }
 
   checkCardComplete(id);
@@ -1850,14 +1816,10 @@ function checkCardComplete(id) {
       if (r.cantDanados < r.count && !r.estadoOK) ok = false;
     }
   } else {
-    if (r.estado === 'No Retirado') {
-      ok = true;
-    } else {
-      ok = r.estado !== '' && r.bultos > 0;
-      if (r.estado === 'Con Daños') {
-        if (!r.tiposDano) ok = false;
-        if (r.fotosData.length === 0) ok = false;
-      }
+    ok = r.estado !== '' && r.bultos > 0;
+    if (r.estado === 'Con Daños') {
+      if (!r.tiposDano) ok = false;
+      if (r.fotosData.length === 0) ok = false;
     }
   }
 
@@ -1885,7 +1847,7 @@ function marcarListo(id) {
     }
   } else {
     estadoLabel = r.estado;
-    cantidadOK = (r.estado !== 'Con Daños' && r.estado !== 'No Retirado') ? 1 : 0;
+    cantidadOK = r.estado !== 'Con Daños' ? 1 : 0;
     cantidadDanados = r.estado === 'Con Daños' ? 1 : 0;
   }
 
@@ -1946,6 +1908,12 @@ function updateProgress() {
 }
 
 // ─── ENVÍO A GAS + GITHUB ─────────────────────────────────────
+function fetchWithTimeout(url, options, ms = 15000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
 async function enviarTodasRendiciones() {
   const ids = Object.keys(ordenesListas);
   if (ids.length === 0) return;
@@ -1963,21 +1931,24 @@ async function enviarTodasRendiciones() {
   };
   allRendiciones.push(record);
   localStorage.setItem('rendicionHistory_opl', JSON.stringify(allRendiciones));
-  if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) {
-    mostrarExito(record, '⚠ Guardado localmente (GAS no configurado)');
-    return;
-  }
-  try {
-    await fetch(GAS_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record)
-    });
-    mostrarExito(record, '');
-  } catch (e) {
-    mostrarExito(record, '⚠ Sin conexión — guardado localmente');
-  }
+
+  mostrarExito(record, '⏳ Enviando al sistema...');
+
+  if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) return;
+
+  (async () => {
+    try {
+      await fetchWithTimeout(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record)
+      });
+      showToast('✓ Datos enviados al sistema', 'success');
+    } catch {
+      showToast('⚠ Sin señal — datos guardados localmente', 'warning');
+    }
+  })();
 }
 
 async function enviarRendicion() {
@@ -2002,43 +1973,37 @@ async function enviarRendicion() {
         tipoDano:       r.tiposDano     || '',
         observacion:    r.observacion   || '',
         bultos:         r.bultos,
-        fotos:          r.fotosData     // base64 comprimidas
+        fotos:          r.fotosData
       };
     })
   };
 
-  // Guardar en historial local
   allRendiciones.push(record);
   localStorage.setItem('rendicionHistory_opl', JSON.stringify(allRendiciones));
 
-  // Deshabilitar botón mientras envía
   const btn = document.getElementById('btnEnviar');
   btn.disabled = true;
   btn.textContent = 'Enviando...';
 
-  if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) {
-    // Sin GAS configurado: mostrar éxito de todos modos (guardado local)
-    mostrarExito(record, '⚠ Guardado localmente (GAS no configurado)');
-    return;
-  }
+  mostrarExito(record, '⏳ Enviando al sistema...');
 
-  try {
-    // no-cors: el navegador no bloquea el POST hacia GAS, pero no podemos leer la respuesta
-    await fetch(GAS_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify(record)
-    });
-    mostrarExito(record, '✓ Datos enviados al sistema');
-  } catch (e) {
-    showToast('Error al enviar: ' + e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = '✓ Enviar Rendición Completa';
-  }
+  if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) return;
+
+  (async () => {
+    try {
+      await fetchWithTimeout(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify(record)
+      });
+      showToast('✓ Datos enviados al sistema', 'success');
+    } catch {
+      showToast('⚠ Sin señal — datos guardados localmente', 'warning');
+    }
+  })();
 }
 
 function mostrarExito(record, statusMsg) {
-  marcarPatenteRendida(record.patente);
   document.getElementById('mainApp').classList.add('hidden');
   document.getElementById('successScreen').classList.remove('hidden');
   document.getElementById('successScreen').classList.add('visible');
