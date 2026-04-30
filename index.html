@@ -1090,6 +1090,23 @@
         Los <strong style="color:var(--danger);">domingos</strong> el sistema se cierra automáticamente, salvo las fechas aquí indicadas.
       </div>
     </div>
+
+    <!-- Limpiar datos locales -->
+    <div class="step" style="margin-top:12px;">
+      <div class="step-header">
+        <div class="step-num">🧹</div>
+        <div>
+          <div class="step-title">Limpiar Datos Locales</div>
+          <div class="step-desc">Borra el historial y caché guardados en este dispositivo</div>
+        </div>
+      </div>
+      <div id="localStorageInfo" style="font-size:12px; font-family:'DM Mono',monospace; color:var(--text2); padding:10px 12px; background:var(--surface2); border-radius:8px;">
+        Calculando...
+      </div>
+      <button class="btn btn-ghost" onclick="limpiarDatosLocales()" style="margin-top:12px; border-color:var(--danger); color:var(--danger);">
+        🗑 Limpiar datos locales
+      </button>
+    </div>
   </div>
 
 </div>
@@ -2095,7 +2112,40 @@ function nuevaRendicion() {
 // ─── ADMIN TOGGLE ─────────────────────────────────────────────
 function toggleAdmin(e) {
   e.preventDefault();
-  document.getElementById('adminPanel').classList.toggle('hidden');
+  const panel = document.getElementById('adminPanel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) actualizarInfoLocalStorage();
+}
+
+function actualizarInfoLocalStorage() {
+  const el = document.getElementById('localStorageInfo');
+  if (!el) return;
+  try {
+    let totalBytes = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      totalBytes += (key.length + localStorage.getItem(key).length) * 2;
+    }
+    const kb = (totalBytes / 1024).toFixed(1);
+    const rendCount = allRendiciones.length;
+    el.textContent = `${kb} KB usados · ${rendCount} rendiciones en historial · ${localStorage.length} claves`;
+  } catch {
+    el.textContent = 'No se pudo calcular';
+  }
+}
+
+function limpiarDatosLocales() {
+  if (!confirm('¿Estás seguro? Esto borrará el historial de rendiciones y las fechas de excepción guardadas en ESTE dispositivo.\n\nLos datos ya enviados al sistema NO se pierden.')) return;
+  try {
+    localStorage.removeItem('rendicionHistory_opl');
+    localStorage.removeItem('fechasExcepcion_opl');
+    allRendiciones = [];
+    showToast('✓ Datos locales eliminados', 'success');
+    actualizarInfoLocalStorage();
+    renderFechasExcepcion();
+  } catch (e) {
+    showToast('Error al limpiar: ' + e.message, 'error');
+  }
 }
 
 // ─── TOAST ────────────────────────────────────────────────────
