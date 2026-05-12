@@ -1,0 +1,18 @@
+{
+  "timestamp": "12-05-2026, 8:15:24 a. m.",
+  "fecha": "2026-05-12",
+  "bodeguero": "Darwin",
+  "patente": "TDLH58",
+  "id": "74525439",
+  "producto": "RESPALDO LINO/BGCL1 (1A_RSU : B_Nuevo_Emb. Abierto)",
+  "subestado": "Recogido - Definitivo",
+  "estadoProducto": "Con Daños",
+  "estadoOK": "",
+  "tipoDano": "Embalaje dañado",
+  "cantidad": 1,
+  "cantidadOK": 0,
+  "cantidadDanados": 1,
+  "bultos": 1,
+  "observacion": "Daño de embalaje grado 2 ",
+  "cantFotos": 3
+}
