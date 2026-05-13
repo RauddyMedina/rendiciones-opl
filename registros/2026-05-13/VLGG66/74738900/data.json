@@ -1,0 +1,18 @@
+{
+  "timestamp": "13-05-2026, 9:40:03 a. m.",
+  "fecha": "2026-05-13",
+  "bodeguero": "Darwin",
+  "patente": "VLGG66",
+  "id": "74738900",
+  "producto": "BOXET ERGO T 0.90X2.00 (2C_Desp. Equivocado : B_Nuevo_Emb. Abierto)",
+  "subestado": "Cliente No Está",
+  "estadoProducto": "Con Daños",
+  "estadoOK": "",
+  "tipoDano": "Embalaje dañado",
+  "cantidad": 1,
+  "cantidadOK": 0,
+  "cantidadDanados": 1,
+  "bultos": 1,
+  "observacion": "Daño de embalaje grado 2 ",
+  "cantFotos": 3
+}
