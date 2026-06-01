@@ -1,0 +1,18 @@
+{
+  "timestamp": "01-06-2026, 8:27:06 a. m.",
+  "fecha": "2026-06-01",
+  "bodeguero": "Jhon",
+  "patente": "RWSF12",
+  "id": "74826973",
+  "producto": "SEC CARGA FRONTAL 9DBZG PRO (3D_Daño 24 Hrs : D_Dañado/Sin Emb)",
+  "subestado": "Recogido - Definitivo",
+  "estadoProducto": "Con Daños",
+  "estadoOK": "",
+  "tipoDano": "Rotura total",
+  "cantidad": 1,
+  "cantidadOK": 0,
+  "cantidadDanados": 1,
+  "bultos": 1,
+  "observacion": "Producto retirado dañado como indica la guía ol",
+  "cantFotos": 2
+}
