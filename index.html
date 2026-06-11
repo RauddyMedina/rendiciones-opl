@@ -2257,15 +2257,18 @@
       }, 90000);
 
       try {
-        // 1. Enviar vía form POST en iframe (evita problemas de CORS con GAS)
-        await enviarViaFormPost({ ...record, secret: GAS_SECRET });
-        console.log('Form POST enviado, esperando procesamiento...');
+        // 1. Disparar el POST sin bloquear. La subida de fotos a GitHub sigue
+        //    en el servidor; NO esperamos a que termine para liberar la pantalla.
+        enviarViaFormPost({ ...record, secret: GAS_SECRET });
+        console.log('Form POST disparado, verificando escritura del Sheet...');
 
-        // 2. Esperar a que GAS procese (Sheet + GitHub toma unos segundos)
-        await sleep(5000);
+        // 2. Dar un instante a que GAS escriba la(s) fila(s) + flush() — esto
+        //    ocurre ANTES de la subida lenta a GitHub, así que la fila aparece
+        //    a los ~1-3s sin importar cuántas fotos haya.
+        await sleep(1200);
 
-        // 3. Verificar que los datos se guardaron realmente
-        const verificado = await verificarRendicion(record.patente, record.fecha, 3);
+        // 3. Sondear verificación rápido (cada 2s) en vez de esperar a ciegas.
+        const verificado = await verificarRendicion(record.patente, record.fecha, 8);
 
         if (verificado) {
           marcarEstadoEnvio(record.uid, 'verificado');
@@ -2275,8 +2278,7 @@
           console.warn('Verificación falló, reintentando envío...');
           // Reintentar con fetch directo como fallback
           await enviarViaFetchFallback({ ...record, secret: GAS_SECRET });
-          await sleep(5000);
-          const verificado2 = await verificarRendicion(record.patente, record.fecha, 2);
+          const verificado2 = await verificarRendicion(record.patente, record.fecha, 4);
           if (verificado2) {
             marcarEstadoEnvio(record.uid, 'verificado');
             showToast('✓ Rendición verificada (2do intento)', 'success');
@@ -2323,12 +2325,18 @@
         document.body.appendChild(form);
         form.submit();
 
-        // Limpiar después de un tiempo prudente
-        setTimeout(() => {
+        // El POST ya está en vuelo: resolvemos de inmediato para no bloquear.
+        // La verificación real se hace por GET aparte (verificarRendicion).
+        resolve();
+
+        // Mantener vivo el iframe hasta que el servidor termine (incluso con
+        // fotos) y recién ahí limpiar. Corre en segundo plano, no bloquea nada.
+        const limpiar = () => {
           try { document.body.removeChild(form); } catch (_) { }
           try { document.body.removeChild(iframe); } catch (_) { }
-          resolve();
-        }, 8000);
+        };
+        iframe.addEventListener('load', () => setTimeout(limpiar, 1000));
+        setTimeout(limpiar, 60000); // tope de seguridad
       });
     }
 
@@ -2348,7 +2356,7 @@
     }
 
     // Verifica con GET si la rendición fue guardada en el Historial
-    async function verificarRendicion(patente, fecha, intentos = 3) {
+    async function verificarRendicion(patente, fecha, intentos = 3, gapMs = 2000) {
       for (let i = 0; i < intentos; i++) {
         try {
           const url = `${GAS_URL}?action=verificar&patente=${encodeURIComponent(patente)}&fecha=${encodeURIComponent(fecha)}`;
@@ -2360,7 +2368,7 @@
         } catch (e) {
           console.warn(`Verificación intento ${i + 1}/${intentos} falló:`, e.message);
         }
-        if (i < intentos - 1) await sleep(3000);
+        if (i < intentos - 1) await sleep(gapMs);
       }
       return false;
     }
