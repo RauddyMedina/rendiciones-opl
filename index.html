@@ -441,6 +441,19 @@
       color: var(--accent);
     }
 
+    .estado-btn.selected-noretirado {
+      background: rgba(255, 165, 2, 0.15);
+      border-color: var(--warning);
+      color: var(--warning);
+    }
+
+    .estado-btn.selected-norendido {
+      background: rgba(255, 71, 87, 0.28);
+      border-color: var(--danger);
+      color: #fff;
+      font-weight: 700;
+    }
+
     .photo-upload {
       margin-top: 14px;
     }
@@ -1278,11 +1291,12 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
+  <!-- Configuración externa — no incluida en el repositorio (ver config.example.js) -->
+  <script src="config.js"></script>
   <script>
     // ── CONFIGURACIÓN ──────────────────────────────────────────────
-    // Reemplaza con la URL de tu Google Apps Script tras el deploy
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwJfNbheZ_bafnTrOtDzyzFK00aK9IOXpeTLtSB0oNeWc51F64Dln07rMCVRb2nPPCHrw/exec';
-    const GAS_SECRET = 'opl-rnd-2026-k7x9q';
+    const GAS_URL = window.GAS_CONFIG?.url || '';
+    const GAS_SECRET = window.GAS_CONFIG?.secret || '';
 
     // ─── DATA STORE ───────────────────────────────────────────────
     let rendicionData = {};
@@ -1335,6 +1349,10 @@
 
       const hist = localStorage.getItem('rendicionHistory_opl');
       if (hist) allRendiciones = JSON.parse(hist);
+
+      // Re-verificar (sin bloquear) rendiciones de hoy que quedaron pendientes
+      // por un congelamiento/cierre del teléfono antes de confirmar.
+      reverificarPendientes();
 
       renderFechasExcepcion();
 
@@ -1641,6 +1659,13 @@
     }
 
     // ─── STEP 3: ID CARDS ─────────────────────────────────────────
+    // Detecta si una orden es un RETIRO (Easy: ID empieza con 38; Paris/otros:
+    // el subestado dice "recogido"/"no recogido"/"retorno"/"retiro").
+    function esRetiro(item) {
+      const sub = (item && item.subestado || '').toLowerCase();
+      return String(item && item.id || '').startsWith('38') || /recogid|retorno|retiro/.test(sub);
+    }
+
     function renderIDCards() {
       const container = document.getElementById('idsContainer');
       container.innerHTML = '';
@@ -1671,6 +1696,8 @@
           <div class="estado-selector" style="margin-top:8px;">
             <button class="estado-btn" id="btn-todosok-${id}" onclick="setGrupoMode('${id}','todos_ok')">✓ Todas OK</button>
             <button class="estado-btn" id="btn-haydanados-${id}" onclick="setGrupoMode('${id}','hay_danados')">⚠️ Hay dañadas</button>
+            ${esRetiro(item) ? `<button class="estado-btn" id="btn-gnoretirado-${id}" onclick="setGrupoMode('${id}','no_retirado')">↩️ No Retirado</button>` : ''}
+            <button class="estado-btn" id="btn-gnorendido-${id}" onclick="setGrupoMode('${id}','no_rendido')">🚨 No rendido</button>
           </div>
         </div>
 
@@ -1752,9 +1779,11 @@
             <button class="estado-btn" onclick="setEstado('${id}', 'Entre')" id="btn-entre-${id}">📦 Entre</button>
             <button class="estado-btn" onclick="setEstado('${id}', 'Nuevo')" id="btn-nuevo-${id}">✨ Nuevo</button>
             <button class="estado-btn" onclick="setEstado('${id}', 'Con Daños')" id="btn-danado-${id}">⚠️ Con Daños</button>
+            ${esRetiro(item) ? `<button class="estado-btn" onclick="setEstado('${id}', 'No Retirado')" id="btn-noretirado-${id}">↩️ No Retirado</button>` : ''}
+            <button class="estado-btn" onclick="setEstado('${id}', 'Producto no rendido')" id="btn-norendido-${id}">🚨 No rendido</button>
           </div>
         </div>
-        <div class="field-group">
+        <div class="field-group" id="bultos-group-${id}">
           <div class="field-label">Cantidad de Bultos Recibidos</div>
           <input type="number" class="bultos-input" id="bultos-${id}" min="1" max="999" placeholder="Ej: 3" oninput="onBultosChange('${id}')">
         </div>
@@ -1822,13 +1851,16 @@
     function setEstado(id, estado) {
       rendiciones[id].estado = estado;
 
-      ['entre', 'nuevo', 'danado'].forEach(e => {
-        document.getElementById(`btn-${e}-${id}`).className = 'estado-btn';
+      ['entre', 'nuevo', 'danado', 'noretirado', 'norendido'].forEach(e => {
+        const el = document.getElementById(`btn-${e}-${id}`);
+        if (el) el.className = 'estado-btn';
       });
 
       const danoSection = document.getElementById(`dano-${id}`);
       const fotosSection = document.getElementById(`fotos-section-${id}`);
       const fotosReq = document.getElementById(`fotos-req-${id}`);
+      const bultosGroup = document.getElementById(`bultos-group-${id}`);
+      if (bultosGroup) bultosGroup.style.display = 'block';
 
       if (estado === 'Nuevo') {
         document.getElementById(`btn-nuevo-${id}`).className = 'estado-btn selected-nuevo';
@@ -1844,6 +1876,17 @@
         danoSection.classList.add('visible');
         fotosSection.style.display = 'block';  // fotos obligatorias
         fotosReq.textContent = '* obligatorio';
+      } else if (estado === 'No Retirado' || estado === 'Producto no rendido') {
+        // Estados terminales: sin daño, sin fotos, sin bultos
+        const btnId = estado === 'No Retirado' ? `btn-noretirado-${id}` : `btn-norendido-${id}`;
+        const cls   = estado === 'No Retirado' ? 'selected-noretirado' : 'selected-norendido';
+        document.getElementById(btnId).className = `estado-btn ${cls}`;
+        danoSection.classList.remove('visible');
+        fotosSection.style.display = 'none';
+        if (bultosGroup) bultosGroup.style.display = 'none';
+        rendiciones[id].bultos = 0;
+        rendiciones[id].tiposDano = '';
+        rendiciones[id].fotosData = [];
       }
 
       checkCardComplete(id);
@@ -1851,11 +1894,31 @@
 
     function setGrupoMode(id, mode) {
       rendiciones[id].grupoMode = mode;
+      const esTerminal = (mode === 'no_retirado' || mode === 'no_rendido');
+
       document.getElementById(`btn-todosok-${id}`).className = mode === 'todos_ok' ? 'estado-btn selected-nuevo' : 'estado-btn';
       document.getElementById(`btn-haydanados-${id}`).className = mode === 'hay_danados' ? 'estado-btn selected-danado' : 'estado-btn';
+      const btnNoRet = document.getElementById(`btn-gnoretirado-${id}`);
+      if (btnNoRet) btnNoRet.className = mode === 'no_retirado' ? 'estado-btn selected-noretirado' : 'estado-btn';
+      const btnNoRend = document.getElementById(`btn-gnorendido-${id}`);
+      if (btnNoRend) btnNoRend.className = mode === 'no_rendido' ? 'estado-btn selected-norendido' : 'estado-btn';
+
       document.getElementById(`section-todosok-${id}`).style.display = mode === 'todos_ok' ? 'block' : 'none';
       document.getElementById(`section-haydanados-${id}`).style.display = mode === 'hay_danados' ? 'block' : 'none';
-      document.getElementById(`shared-${id}`).style.display = 'block';
+      document.getElementById(`shared-${id}`).style.display = esTerminal ? 'none' : 'block';
+
+      if (esTerminal) {
+        // Modos terminales: toda la orden no retirada / no rendida — sin bultos ni fotos
+        rendiciones[id].estado = (mode === 'no_retirado') ? 'No Retirado' : 'Producto no rendido';
+        rendiciones[id].cantDanados = 0;
+        rendiciones[id].estadoOK = '';
+        rendiciones[id].tiposDano = '';
+        rendiciones[id].bultos = 0;
+        rendiciones[id].fotosData = [];
+        checkCardComplete(id);
+        return;
+      }
+
       // pre-fill bultos con la cantidad
       const bultosEl = document.getElementById(`bultos-${id}`);
       if (bultosEl && !rendiciones[id].bultos) {
@@ -1991,12 +2054,16 @@
       let ok = false;
 
       if (r.count > 1) {
-        if (r.grupoMode === 'todos_ok') {
+        if (r.grupoMode === 'no_retirado' || r.grupoMode === 'no_rendido') {
+          ok = true; // estados terminales: no requieren bultos ni fotos
+        } else if (r.grupoMode === 'todos_ok') {
           ok = r.estado !== '' && r.bultos > 0;
         } else if (r.grupoMode === 'hay_danados') {
           ok = r.cantDanados > 0 && r.bultos > 0 && r.tiposDano !== '' && r.fotosData.length > 0;
           if (r.cantDanados < r.count && !r.estadoOK) ok = false;
         }
+      } else if (r.estado === 'No Retirado' || r.estado === 'Producto no rendido') {
+        ok = true; // estados terminales: no requieren bultos ni fotos
       } else {
         ok = r.estado !== '' && r.bultos > 0;
         if (r.estado === 'Con Daños') {
@@ -2017,7 +2084,12 @@
       const item = items.find(x => x.id === id) || {};
 
       let estadoLabel, cantidadOK, cantidadDanados;
-      if (r.count > 1) {
+      const esTerminal = (r.estado === 'No Retirado' || r.estado === 'Producto no rendido');
+      if (esTerminal) {
+        estadoLabel = r.estado;
+        cantidadOK = 0;
+        cantidadDanados = 0;
+      } else if (r.count > 1) {
         if (r.grupoMode === 'todos_ok') {
           estadoLabel = r.estado;
           cantidadOK = r.count;
@@ -2110,6 +2182,9 @@
 
     function guardarHistorialLocal(record) {
       try {
+        // Marcar la rendición para poder re-verificarla al reabrir la app
+        record.uid = record.uid || ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+        record.estadoEnvio = record.estadoEnvio || 'pendiente';
         const recordLimpio = recordSinFotos(record);
         allRendiciones.push(recordLimpio);
         // Mantener solo las últimas 50 rendiciones para no acumular datos
@@ -2129,12 +2204,53 @@
       }
     }
 
+    // Actualiza el estado de envío de una rendición guardada en localStorage
+    // (usado para re-verificar al reabrir la app)
+    function marcarEstadoEnvio(uid, estado) {
+      if (!uid) return;
+      const r = allRendiciones.find(x => x.uid === uid);
+      if (!r) return;
+      r.estadoEnvio = estado;
+      try {
+        localStorage.setItem('rendicionHistory_opl', JSON.stringify(allRendiciones));
+      } catch (_) { /* localStorage lleno o no disponible */ }
+    }
+
+    // Al reabrir la app, re-verifica las rendiciones de hoy que quedaron
+    // "pendiente" (ej: el teléfono se congeló o se cerró antes de confirmar).
+    // No reenvía fotos — solo consulta si ya se guardaron en el sistema.
+    async function reverificarPendientes() {
+      try {
+        const hoy = toISOLocal(new Date());
+        const pendientes = allRendiciones.filter(r => r.estadoEnvio === 'pendiente' && r.fecha === hoy);
+        if (pendientes.length === 0) return;
+        let confirmadas = 0;
+        for (const r of pendientes) {
+          const ok = await verificarRendicion(r.patente, r.fecha, 1);
+          if (ok) { marcarEstadoEnvio(r.uid, 'verificado'); confirmadas++; }
+        }
+        const restantes = pendientes.length - confirmadas;
+        if (confirmadas > 0) showToast(`✓ ${confirmadas} rendición(es) confirmada(s) en el sistema`, 'success');
+        if (restantes > 0) showToast(`⚠ ${restantes} rendición(es) sin confirmar — avisa al admin`, 'error');
+      } catch (e) {
+        console.warn('reverificarPendientes falló:', e.message);
+      }
+    }
+
     // Envía datos a GAS mediante form POST en iframe oculto (evita CORS/redirect)
     // y luego verifica que los datos se hayan guardado realmente
     async function enviarPostGAS(record) {
-      if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) return;
+      if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) {
+        actualizarReceiptStatus('⚠️ GAS_URL no configurado');
+        return;
+      }
 
       actualizarReceiptStatus('⏳ Enviando al sistema...');
+
+      // Watchdog: si en 90s no terminó, sale del "Enviando..." pase lo que pase
+      const watchdog = setTimeout(() => {
+        actualizarReceiptStatus('⚠️ Sin respuesta del sistema — verifica con admin');
+      }, 90000);
 
       try {
         // 1. Enviar vía form POST en iframe (evita problemas de CORS con GAS)
@@ -2148,6 +2264,7 @@
         const verificado = await verificarRendicion(record.patente, record.fecha, 3);
 
         if (verificado) {
+          marcarEstadoEnvio(record.uid, 'verificado');
           showToast('✓ Rendición verificada en el sistema', 'success');
           actualizarReceiptStatus('✅ Registrado y verificado en el sistema');
         } else {
@@ -2157,6 +2274,7 @@
           await sleep(5000);
           const verificado2 = await verificarRendicion(record.patente, record.fecha, 2);
           if (verificado2) {
+            marcarEstadoEnvio(record.uid, 'verificado');
             showToast('✓ Rendición verificada (2do intento)', 'success');
             actualizarReceiptStatus('✅ Registrado y verificado en el sistema');
           } else {
@@ -2168,6 +2286,8 @@
         console.error('Error en enviarPostGAS:', err.message);
         showToast('⚠ Error de conexión — reintenta', 'error');
         actualizarReceiptStatus('⚠️ Error de conexión — reintenta si es posible');
+      } finally {
+        clearTimeout(watchdog);
       }
     }
 
@@ -2213,6 +2333,7 @@
       try {
         await fetch(GAS_URL, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
           redirect: 'follow',
         });
@@ -2267,8 +2388,11 @@
           ordenes: ids.map(id => ordenesListas[id])
         };
 
-        guardarHistorialLocal(record);
+        // Cambiar a la pantalla de éxito PRIMERO, antes de cualquier trabajo
+        // pesado (localStorage / envío). Así el usuario siempre sale de la
+        // pantalla "Enviando..." aunque el navegador móvil congele el background.
         mostrarExito(record, '⏳ Enviando al sistema...');
+        guardarHistorialLocal(record);
         enviarPostGAS(record);
       } catch (err) {
         console.error('Error en enviarTodasRendiciones:', err);
@@ -2310,8 +2434,11 @@
           })
         };
 
-        guardarHistorialLocal(record);
+        // Cambiar a la pantalla de éxito PRIMERO, antes de cualquier trabajo
+        // pesado (localStorage / envío). Así el usuario siempre sale de la
+        // pantalla "Enviando..." aunque el navegador móvil congele el background.
         mostrarExito(record, '⏳ Enviando al sistema...');
+        guardarHistorialLocal(record);
         enviarPostGAS(record);
       } catch (err) {
         console.error('Error en enviarRendicion:', err);
@@ -2335,7 +2462,7 @@
     Total órdenes: <strong>${record.totalOrdenes}</strong><br>
     ─────────────────────<br>
     ${record.ordenes.map(o =>
-        `${o.id} · ${o.estadoProducto}${o.tipoDano ? ' · ' + o.tipoDano : ''} · ${o.bultos} bulto(s)${o.fotos && o.fotos.length ? ' · ' + o.fotos.length + ' foto(s)' : ''}`
+        `${o.id} · ${o.estadoProducto}${o.tipoDano ? ' · ' + o.tipoDano : ''}${o.bultos > 0 ? ' · ' + o.bultos + ' bulto(s)' : ''}${o.fotos && o.fotos.length ? ' · ' + o.fotos.length + ' foto(s)' : ''}`
       ).join('<br>')}
     <br>─────────────────────<br>
     <span class="receipt-status" style="color:var(--accent3)">${statusMsg}</span>
