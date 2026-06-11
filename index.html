@@ -1291,8 +1291,12 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
-  <!-- Configuración externa — no incluida en el repositorio (ver config.example.js) -->
-  <script src="config.js"></script>
+  <script>
+    window.GAS_CONFIG = {
+      url: 'https://script.google.com/macros/s/AKfycbwJfNbheZ_bafnTrOtDzyzFK00aK9IOXpeTLtSB0oNeWc51F64Dln07rMCVRb2nPPCHrw/exec',
+      secret: 'opl-rnd-2026-k7x9q'
+    };
+  </script>
   <script>
     // ── CONFIGURACIÓN ──────────────────────────────────────────────
     const GAS_URL = window.GAS_CONFIG?.url || '';
