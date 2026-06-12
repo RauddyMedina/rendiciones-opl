@@ -1203,6 +1203,10 @@
       <div class="success-title">¡Rendición Enviada!</div>
       <div class="success-sub">Los datos fueron registrados en el sistema.</div>
       <div class="receipt" id="receipt"></div>
+      <button class="btn btn-success hidden" id="btnReintentarEnvio" onclick="reintentarEnvio()"
+        style="max-width:300px; margin:20px auto 0;">
+        🔄 Reintentar envío
+      </button>
       <button class="btn btn-ghost" onclick="nuevaRendicion()" style="max-width:300px; margin:20px auto 0;">
         + Nueva Rendición
       </button>
@@ -1357,6 +1361,9 @@
       // Re-verificar (sin bloquear) rendiciones de hoy que quedaron pendientes
       // por un congelamiento/cierre del teléfono antes de confirmar.
       reverificarPendientes();
+
+      // Limpiar borradores de días anteriores (los de hoy se conservan)
+      purgarBorradoresViejos();
 
       renderFechasExcepcion();
 
@@ -1559,6 +1566,9 @@
       document.getElementById('step2').classList.remove('hidden');
       document.getElementById('step2').classList.add('active');
       document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // Retomar avance guardado de hoy para esta patente (si lo hay)
+      restaurarBorradorSiExiste();
     }
 
     function volverPaso1() {
@@ -2124,6 +2134,10 @@
         fotos: r.fotosData
       };
 
+      // Persistir el avance: si refrescan o el teléfono se congela,
+      // esta orden ya no se pierde.
+      guardarBorrador();
+
       showToast(`Orden ${id} confirmada ✓`, 'success');
 
       setTimeout(() => {
@@ -2163,6 +2177,129 @@
       document.getElementById('progressFill').style.width = `${pct}%`;
       document.getElementById('progressCount').textContent = `${done}/${total}`;
       document.getElementById('btnEnviar').disabled = done < total;
+    }
+
+    // ─── BORRADOR PERSISTENTE (IndexedDB) ─────────────────────────
+    // El avance de cada orden completada se guarda en IndexedDB (las fotos
+    // base64 pesan varios MB y no caben en localStorage). Si el teléfono se
+    // congela o refrescan la página, el avance se restaura al confirmar la
+    // misma patente el mismo día.
+    const DRAFT_DB = 'rendiciones_opl';
+    const DRAFT_STORE = 'borradores';
+
+    function abrirDraftDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DRAFT_DB, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(DRAFT_STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function guardarBorrador() {
+      if (!selectedPatente) return;
+      try {
+        const db = await abrirDraftDB();
+        const hoy = toISOLocal(new Date());
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(DRAFT_STORE, 'readwrite');
+          tx.objectStore(DRAFT_STORE).put(
+            { fecha: hoy, patente: selectedPatente, bodeguero: bodegueroNombre, ordenesListas },
+            hoy + '::' + selectedPatente
+          );
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+        });
+        db.close();
+      } catch (e) {
+        console.warn('No se pudo guardar el borrador:', e.message);
+      }
+    }
+
+    async function leerBorrador(patente) {
+      try {
+        const db = await abrirDraftDB();
+        const data = await new Promise((resolve, reject) => {
+          const req = db.transaction(DRAFT_STORE)
+            .objectStore(DRAFT_STORE)
+            .get(toISOLocal(new Date()) + '::' + patente);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        db.close();
+        return data || null;
+      } catch (e) {
+        console.warn('No se pudo leer el borrador:', e.message);
+        return null;
+      }
+    }
+
+    async function borrarBorrador(patente, fecha) {
+      try {
+        const db = await abrirDraftDB();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(DRAFT_STORE, 'readwrite');
+          tx.objectStore(DRAFT_STORE).delete((fecha || toISOLocal(new Date())) + '::' + patente);
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+        });
+        db.close();
+      } catch (e) {
+        console.warn('No se pudo borrar el borrador:', e.message);
+      }
+    }
+
+    async function purgarBorradoresViejos() {
+      try {
+        const hoy = toISOLocal(new Date());
+        const db = await abrirDraftDB();
+        const keys = await new Promise((resolve, reject) => {
+          const req = db.transaction(DRAFT_STORE).objectStore(DRAFT_STORE).getAllKeys();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+        const viejas = keys.filter(k => String(k).slice(0, 10) !== hoy);
+        if (viejas.length > 0) {
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction(DRAFT_STORE, 'readwrite');
+            viejas.forEach(k => tx.objectStore(DRAFT_STORE).delete(k));
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+          });
+        }
+        db.close();
+      } catch (e) {
+        console.warn('purgarBorradoresViejos falló:', e.message);
+      }
+    }
+
+    // Al confirmar la patente, ofrece retomar el avance guardado de hoy.
+    // Solo restaura órdenes que siguen pendientes en el sheet: las ya
+    // registradas vienen filtradas por el doGet y no hay que reenviarlas.
+    async function restaurarBorradorSiExiste() {
+      const draft = await leerBorrador(selectedPatente);
+      if (!draft || !draft.ordenesListas) return;
+
+      const vigentes = new Set(buildGroupedOrders(selectedPatente).map(g => g.id));
+      const restauradas = {};
+      Object.keys(draft.ordenesListas).forEach(id => {
+        if (vigentes.has(id)) restauradas[id] = draft.ordenesListas[id];
+      });
+
+      const n = Object.keys(restauradas).length;
+      if (n === 0) {
+        borrarBorrador(selectedPatente);
+        return;
+      }
+      if (!confirm(`Tienes un avance guardado de ${n} orden(es) para esta patente.\n\n¿Continuar donde quedaste?`)) {
+        borrarBorrador(selectedPatente);
+        return;
+      }
+      ordenesListas = restauradas;
+      populateIdSelect();
+      renderSelectedIds();
+      actualizarBotonesStep2();
+      showToast(`✓ Avance restaurado: ${n} orden(es)`, 'success');
     }
 
     // ─── ENVÍO A GAS + GITHUB ─────────────────────────────────────
@@ -2241,60 +2378,114 @@
       }
     }
 
-    // Envía datos a GAS mediante form POST en iframe oculto (evita CORS/redirect)
-    // y luego verifica que los datos se hayan guardado realmente
+    // Envía la rendición a GAS en TANDAS chicas. Un solo POST gigante
+    // (8 órdenes × fotos base64 = varios MB) congelaba el teléfono al
+    // serializar/encodear el formulario (caso TDLH58 2026-06-12) y si
+    // fallaba se perdía todo. Cada tanda se envía y verifica por separado;
+    // el servidor deduplica por fecha+patente+id, así que reenviar es seguro.
+
+    // Tope aproximado de fotos por tanda (caracteres base64 ≈ bytes)
+    const TANDA_MAX_CHARS = 2500000;
+
+    function partirEnTandas(ordenes) {
+      const tandas = [];
+      let actual = [], acum = 0;
+      for (const o of ordenes) {
+        const peso = (o.fotos || []).reduce((s, f) => s + (f ? f.length : 0), 0) + 2000;
+        if (actual.length > 0 && acum + peso > TANDA_MAX_CHARS) {
+          tandas.push(actual);
+          actual = [];
+          acum = 0;
+        }
+        actual.push(o);
+        acum += peso;
+      }
+      if (actual.length > 0) tandas.push(actual);
+      return tandas;
+    }
+
+    // Estado del envío en curso — permite reanudar las tandas pendientes
+    // con el botón "Reintentar envío" sin rehacer la rendición.
+    let envioEnCurso = null;
+
     async function enviarPostGAS(record) {
       if (!GAS_URL || GAS_URL.startsWith('REEMPLAZAR')) {
         actualizarReceiptStatus('⚠️ GAS_URL no configurado');
         return;
       }
+      envioEnCurso = { record, tandas: partirEnTandas(record.ordenes), idx: 0 };
+      await procesarEnvioPendiente();
+    }
 
-      actualizarReceiptStatus('⏳ Enviando al sistema...');
+    async function procesarEnvioPendiente() {
+      if (!envioEnCurso) return;
+      const { record, tandas } = envioEnCurso;
+      const total = tandas.length;
+      mostrarBtnReintentar(false);
 
-      // Watchdog: si en 90s no terminó, sale del "Enviando..." pase lo que pase
+      // Watchdog: si no terminó en un tiempo razonable, sale del "Enviando..."
       const watchdog = setTimeout(() => {
         actualizarReceiptStatus('⚠️ Sin respuesta del sistema — verifica con admin');
-      }, 90000);
+        mostrarBtnReintentar(true);
+      }, 90000 + 60000 * total);
 
       try {
-        // 1. Disparar el POST sin bloquear. La subida de fotos a GitHub sigue
-        //    en el servidor; NO esperamos a que termine para liberar la pantalla.
-        enviarViaFormPost({ ...record, secret: GAS_SECRET });
-        console.log('Form POST disparado, verificando escritura del Sheet...');
+        while (envioEnCurso.idx < total) {
+          const i = envioEnCurso.idx;
+          const tanda = tandas[i];
+          const ids = tanda.map(o => o.id);
+          actualizarReceiptStatus(total > 1
+            ? `⏳ Enviando tanda ${i + 1}/${total} (${ids.length} orden(es))...`
+            : '⏳ Enviando al sistema...');
 
-        // 2. Dar un instante a que GAS escriba la(s) fila(s) + flush() — esto
-        //    ocurre ANTES de la subida lenta a GitHub, así que la fila aparece
-        //    a los ~1-3s sin importar cuántas fotos haya.
-        await sleep(1200);
+          const sub = { ...record, ordenes: tanda, totalOrdenes: tanda.length, secret: GAS_SECRET };
 
-        // 3. Sondear verificación rápido (cada 2s) en vez de esperar a ciegas.
-        const verificado = await verificarRendicion(record.patente, record.fecha, 8);
+          // Disparar el POST sin bloquear; la fila del Sheet aparece a los
+          // ~1-3s (flush antes de la subida lenta de fotos a GitHub).
+          enviarViaFormPost(sub);
+          await sleep(1200);
 
-        if (verificado) {
-          marcarEstadoEnvio(record.uid, 'verificado');
-          showToast('✓ Rendición verificada en el sistema', 'success');
-          actualizarReceiptStatus('✅ Registrado y verificado en el sistema');
-        } else {
-          console.warn('Verificación falló, reintentando envío...');
-          // Reintentar con fetch directo como fallback
-          await enviarViaFetchFallback({ ...record, secret: GAS_SECRET });
-          const verificado2 = await verificarRendicion(record.patente, record.fecha, 4);
-          if (verificado2) {
-            marcarEstadoEnvio(record.uid, 'verificado');
-            showToast('✓ Rendición verificada (2do intento)', 'success');
-            actualizarReceiptStatus('✅ Registrado y verificado en el sistema');
-          } else {
-            showToast('⚠ No se pudo verificar — revisa con admin', 'error');
-            actualizarReceiptStatus('⚠️ Enviado pero no verificado — contacta al administrador');
+          let ok = await verificarRendicion(record.patente, record.fecha, 6, 2000, ids);
+          if (!ok) {
+            // Reenviar la tanda — el dedup del servidor evita duplicados
+            console.warn(`Tanda ${i + 1}/${total} sin verificar, reenviando...`);
+            await enviarViaFetchFallback(sub);
+            ok = await verificarRendicion(record.patente, record.fecha, 4, 2500, ids);
           }
+          if (!ok) {
+            const pendientes = tandas.slice(i).reduce((s, t) => s + t.length, 0);
+            showToast('⚠ Envío incompleto — usa Reintentar', 'error');
+            actualizarReceiptStatus(`⚠️ Quedaron ${pendientes} orden(es) sin confirmar — presiona Reintentar envío`);
+            mostrarBtnReintentar(true);
+            return; // el borrador NO se borra; se reanuda desde esta tanda
+          }
+          envioEnCurso.idx++;
         }
+
+        // Todas las tandas verificadas en el Sheet
+        marcarEstadoEnvio(record.uid, 'verificado');
+        borrarBorrador(record.patente, record.fecha);
+        envioEnCurso = null;
+        showToast('✓ Rendición verificada en el sistema', 'success');
+        actualizarReceiptStatus('✅ Registrado y verificado en el sistema');
       } catch (err) {
-        console.error('Error en enviarPostGAS:', err.message);
+        console.error('Error en procesarEnvioPendiente:', err.message);
         showToast('⚠ Error de conexión — reintenta', 'error');
-        actualizarReceiptStatus('⚠️ Error de conexión — reintenta si es posible');
+        actualizarReceiptStatus('⚠️ Error de conexión — presiona Reintentar envío');
+        mostrarBtnReintentar(true);
       } finally {
         clearTimeout(watchdog);
       }
+    }
+
+    function reintentarEnvio() {
+      if (!envioEnCurso) return;
+      procesarEnvioPendiente();
+    }
+
+    function mostrarBtnReintentar(visible) {
+      const btn = document.getElementById('btnReintentarEnvio');
+      if (btn) btn.classList.toggle('hidden', !visible);
     }
 
     // Envía datos mediante un formulario oculto + iframe (bypasea CORS completamente)
@@ -2355,11 +2546,14 @@
       }
     }
 
-    // Verifica con GET si la rendición fue guardada en el Historial
-    async function verificarRendicion(patente, fecha, intentos = 3, gapMs = 2000) {
+    // Verifica con GET si la rendición fue guardada en el Historial.
+    // Con `ids` verifica que ESAS órdenes específicas tengan fila (tandas);
+    // sin `ids` basta con que exista cualquier fila de la patente+fecha.
+    async function verificarRendicion(patente, fecha, intentos = 3, gapMs = 2000, ids = null) {
       for (let i = 0; i < intentos; i++) {
         try {
-          const url = `${GAS_URL}?action=verificar&patente=${encodeURIComponent(patente)}&fecha=${encodeURIComponent(fecha)}`;
+          let url = `${GAS_URL}?action=verificar&patente=${encodeURIComponent(patente)}&fecha=${encodeURIComponent(fecha)}`;
+          if (ids && ids.length > 0) url += `&ids=${encodeURIComponent(ids.join(','))}`;
           const resp = await fetchWithTimeout(url, {}, 15000);
           if (resp.ok) {
             const json = await resp.json();
@@ -2374,6 +2568,15 @@
     }
 
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // Deja que el navegador pinte la pantalla antes de seguir con trabajo
+    // pesado (stringify de fotos). Sin esto el teléfono queda clavado en
+    // "Enviando..." sin alcanzar a mostrar el recibo.
+    function cederHilo() {
+      return new Promise(resolve =>
+        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50)))
+      );
+    }
 
     function actualizarReceiptStatus(msg) {
       const receipt = document.getElementById('receipt');
@@ -2405,6 +2608,7 @@
         // pantalla "Enviando..." aunque el navegador móvil congele el background.
         mostrarExito(record, '⏳ Enviando al sistema...');
         guardarHistorialLocal(record);
+        await cederHilo();
         enviarPostGAS(record);
       } catch (err) {
         console.error('Error en enviarTodasRendiciones:', err);
@@ -2451,6 +2655,7 @@
         // pantalla "Enviando..." aunque el navegador móvil congele el background.
         mostrarExito(record, '⏳ Enviando al sistema...');
         guardarHistorialLocal(record);
+        await cederHilo();
         enviarPostGAS(record);
       } catch (err) {
         console.error('Error en enviarRendicion:', err);
@@ -2498,6 +2703,19 @@
       document.getElementById('progressBar').classList.add('hidden');
       document.getElementById('idsContainer').classList.add('hidden');
       document.getElementById('finalSection').classList.add('hidden');
+
+      // Resetear los botones de envío: sin esto quedaban en "Enviando..."
+      // deshabilitados (estado zombie) al iniciar la siguiente rendición.
+      const btnEnviar = document.getElementById('btnEnviar');
+      btnEnviar.disabled = true;
+      btnEnviar.textContent = '✓ Enviar Rendición Completa';
+      const btnEnviarStep2 = document.getElementById('btnEnviarStep2');
+      btnEnviarStep2.disabled = false;
+      btnEnviarStep2.textContent = '✓ Enviar todas las rendiciones';
+      btnEnviarStep2.classList.add('hidden');
+      const progEl = document.getElementById('step2Progress');
+      if (progEl) progEl.textContent = '';
+      mostrarBtnReintentar(false);
 
       selectedPatente = '';
       selectedIds = [];
