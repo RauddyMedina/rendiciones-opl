@@ -1149,6 +1149,9 @@
         <div id="step2Progress"
           style="margin-top:12px; color:var(--accent3); font-size:13px; font-family:'DM Mono',monospace;"></div>
 
+        <div id="ordenesListasContainer"
+          style="margin-top:12px; display:flex; flex-direction:column; gap:8px;"></div>
+
         <button class="btn btn-primary" onclick="iniciarRendicion()" id="btnIniciarRendicion" disabled
           style="margin-top:16px;">
           Iniciar Rendición →
@@ -2167,6 +2170,175 @@
       const btnEnviarStep2 = document.getElementById('btnEnviarStep2');
       if (btnEnviarStep2) btnEnviarStep2.classList.toggle('hidden', done < total);
       document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
+      renderOrdenesListas();
+    }
+
+    // ─── ÓRDENES CONFIRMADAS: EDITAR / QUITAR ─────────────────────
+    // Lista las órdenes ya confirmadas (ordenesListas) con botones para
+    // corregirlas antes del envío final. Nada se ha enviado todavía al
+    // servidor, así que editar aquí solo toca el estado local.
+    function renderOrdenesListas() {
+      const container = document.getElementById('ordenesListasContainer');
+      if (!container) return;
+      container.innerHTML = '';
+      const ids = Object.keys(ordenesListas);
+      if (ids.length === 0) return;
+
+      const titulo = document.createElement('div');
+      titulo.style.cssText = 'font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text2); font-family:"DM Mono",monospace; margin-bottom:2px;';
+      titulo.textContent = 'Órdenes confirmadas — toca para corregir';
+      container.appendChild(titulo);
+
+      ids.forEach(id => {
+        const o = ordenesListas[id];
+        const resumen = `${o.estadoProducto}`
+          + (o.tipoDano ? ' · ' + o.tipoDano : '')
+          + (o.bultos > 0 ? ' · ' + o.bultos + ' bulto(s)' : '')
+          + (o.fotos && o.fotos.length ? ' · ' + o.fotos.length + ' foto(s)' : '');
+
+        const card = document.createElement('div');
+        card.className = 'id-card rendido';
+        card.style.cssText = 'padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px;';
+        card.innerHTML = `
+      <div style="min-width:0; flex:1;">
+        <div class="id-number" style="font-size:14px;">${id}</div>
+        <div style="font-size:12px; color:var(--text2); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${resumen}</div>
+      </div>
+      <div style="display:flex; gap:6px; flex-shrink:0;">
+        <button onclick="editarOrden('${id}')" title="Editar"
+          style="background:rgba(0,212,255,0.12); border:1px solid rgba(0,212,255,0.35); color:var(--accent); border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif;">✏️ Editar</button>
+        <button onclick="quitarOrdenLista('${id}')" title="Quitar"
+          style="background:rgba(255,71,87,0.1); border:1px solid rgba(255,71,87,0.35); color:var(--danger); border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif;">🗑</button>
+      </div>`;
+        container.appendChild(card);
+      });
+    }
+
+    // Helper: setea el .value de un input/select/textarea si existe.
+    function setInputVal(elId, value) {
+      const el = document.getElementById(elId);
+      if (el) el.value = (value === undefined || value === null) ? '' : value;
+    }
+
+    // Reconstruye la forma de trabajo (rendiciones[id]) a partir de una
+    // orden ya confirmada (ordenesListas[id]). Inverso de marcarListo().
+    function ordenListaARendicion(o) {
+      const count = o.cantidad || 1;
+      const fotosData = (o.fotos || []).slice();
+      const r = {
+        estado: '',
+        tiposDano: o.tipoDano || '',
+        observacion: o.observacion || '',
+        bultos: o.bultos || 0,
+        fotos: fotosData.map((_, i) => `foto${i + 1}.jpg`),
+        fotosData,
+        count,
+        grupoMode: null,
+        cantDanados: 0,
+        estadoOK: ''
+      };
+      const terminal = o.estadoProducto === 'No Retirado' || o.estadoProducto === 'Producto no rendido';
+      if (terminal) {
+        r.estado = o.estadoProducto;
+        if (count > 1) r.grupoMode = (o.estadoProducto === 'No Retirado') ? 'no_retirado' : 'no_rendido';
+      } else if (count > 1) {
+        if ((o.cantidadDanados || 0) > 0) {
+          r.grupoMode = 'hay_danados';
+          r.cantDanados = o.cantidadDanados;
+          r.estadoOK = o.estadoOK || '';
+        } else {
+          r.grupoMode = 'todos_ok';
+          r.estado = o.estadoProducto;
+        }
+      } else {
+        r.estado = o.estadoProducto; // 'Entre' | 'Nuevo' | 'Con Daños'
+      }
+      return r;
+    }
+
+    // Aplica los valores reconstruidos sobre las tarjetas recién renderizadas,
+    // reusando los mismos handlers de click para reproducir la selección visual.
+    function precargarOrden(id) {
+      const r = rendiciones[id];
+
+      if (r.count > 1) {
+        if (r.grupoMode === 'no_retirado' || r.grupoMode === 'no_rendido') {
+          setGrupoMode(id, r.grupoMode);
+        } else if (r.grupoMode === 'todos_ok') {
+          setGrupoMode(id, 'todos_ok');
+          if (r.estado) setEstadoGrupo(id, r.estado);
+          setInputVal(`bultos-${id}`, r.bultos);
+          setInputVal(`obs-${id}`, r.observacion);
+        } else if (r.grupoMode === 'hay_danados') {
+          setGrupoMode(id, 'hay_danados');
+          setInputVal(`cantDanados-${id}`, r.cantDanados);
+          onCantDanadosChange(id);
+          if (r.estadoOK && r.estadoOK !== 'N/A') setEstadoOK(id, r.estadoOK);
+          setInputVal(`tipoDano-${id}`, r.tiposDano);
+          onTipoDanoChange(id);
+          renderPhotoPreviews(id);
+          setInputVal(`bultos-${id}`, r.bultos);
+          setInputVal(`obs-${id}`, r.observacion);
+        }
+      } else {
+        setEstado(id, r.estado);
+        if (r.estado === 'Con Daños') {
+          setInputVal(`tipoDano-${id}`, r.tiposDano);
+          onTipoDanoChange(id);
+          renderPhotoPreviews(id);
+        } else if (r.estado === 'Entre') {
+          renderPhotoPreviews(id); // fotos opcionales que pudieran existir
+        }
+        if (r.estado !== 'No Retirado' && r.estado !== 'Producto no rendido') {
+          setInputVal(`bultos-${id}`, r.bultos);
+        }
+        setInputVal(`obs-${id}`, r.observacion);
+      }
+
+      checkCardComplete(id);
+    }
+
+    // Reabre una orden confirmada en el Paso 3 con sus valores precargados.
+    function editarOrden(id) {
+      const stored = ordenesListas[id];
+      if (!stored) return;
+
+      rendiciones = {};
+      rendiciones[id] = ordenListaARendicion(stored);
+      selectedIds = [id];
+      selectedGroupedItem = buildGroupedOrders(selectedPatente).find(g => g.id === id) || null;
+
+      // Mientras se edita vuelve a estar "en curso"; marcarListo() la reincorpora.
+      delete ordenesListas[id];
+      guardarBorrador();
+
+      document.getElementById('step2').classList.add('hidden');
+      document.getElementById('step3').classList.remove('hidden');
+      document.getElementById('step3').classList.add('active');
+
+      renderIDCards();
+      document.getElementById('progressBar').classList.remove('hidden');
+      document.getElementById('idsContainer').classList.remove('hidden');
+      document.getElementById('finalSection').classList.remove('hidden');
+      updateProgress();
+      actualizarBotonesStep2();
+
+      precargarOrden(id);
+
+      document.getElementById('step3').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showToast(`Editando orden ${id}`, '');
+    }
+
+    // Quita una orden confirmada (caso "la agregué por error").
+    function quitarOrdenLista(id) {
+      if (!ordenesListas[id]) return;
+      if (!confirm(`¿Quitar la orden ${id} de las confirmadas?`)) return;
+      delete ordenesListas[id];
+      guardarBorrador();
+      populateIdSelect();
+      renderSelectedIds();
+      actualizarBotonesStep2();
+      showToast(`Orden ${id} quitada`, '');
     }
 
     function updateProgress() {
