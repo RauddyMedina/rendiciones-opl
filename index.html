@@ -1149,6 +1149,9 @@
         <div id="step2Progress"
           style="margin-top:12px; color:var(--accent3); font-size:13px; font-family:'DM Mono',monospace;"></div>
 
+        <div id="step2Warning" class="hidden"
+          style="margin-top:12px; padding:12px 14px; background:rgba(255,165,2,0.12); border:1px solid var(--warning); border-left:4px solid var(--warning); border-radius:8px; font-size:13px; color:var(--warning); line-height:1.45;"></div>
+
         <button class="btn btn-primary" onclick="iniciarRendicion()" id="btnIniciarRendicion" disabled
           style="margin-top:16px;">
           Iniciar Rendición →
@@ -1577,10 +1580,24 @@
     }
 
     function volverPaso1() {
+      // Avisar si hay órdenes confirmadas que aún no se envían al sistema.
+      // No se pierden (quedan en el borrador del teléfono), pero NO quedan
+      // registradas hasta presionar "Enviar todas las rendiciones".
+      const pendientes = Object.keys(ordenesListas).length;
+      if (pendientes > 0) {
+        const ok = confirm(
+          `⚠️ Tienes ${pendientes} orden(es) confirmadas que TODAVÍA NO se han enviado al sistema.\n\n` +
+          `Si cambias de patente ahora NO se pierden (quedan guardadas en este teléfono), ` +
+          `pero NO estarán registradas hasta que las envíes con "✓ Enviar todas las rendiciones".\n\n` +
+          `¿Cambiar de patente de todos modos?`
+        );
+        if (!ok) return;
+      }
       document.getElementById('step1').classList.remove('completed');
       document.getElementById('step1').classList.add('active');
       document.getElementById('step1').querySelector('.step-num').textContent = '1';
       document.getElementById('step2').classList.add('hidden');
+      document.getElementById('step2Warning').classList.add('hidden');
       selectedIds = [];
     }
 
@@ -2172,6 +2189,22 @@
       const btnEnviarStep2 = document.getElementById('btnEnviarStep2');
       if (btnEnviarStep2) btnEnviarStep2.classList.toggle('hidden', done < total);
       document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
+
+      // Aviso: hay órdenes confirmadas que TODAVÍA no se enviaron al sistema.
+      // Quedan guardadas en el teléfono, pero no están registradas hasta enviar.
+      const warn = document.getElementById('step2Warning');
+      if (warn) {
+        if (done > 0) {
+          const falta = total - done;
+          warn.innerHTML = done >= total
+            ? `⚠️ Tienes <strong>${done} orden(es) confirmadas SIN ENVIAR</strong>. Presiona <strong>“✓ Enviar todas las rendiciones”</strong> y espera el <strong>✅ verde</strong>; recién ahí quedan en el sistema.`
+            : `⚠️ Tienes <strong>${done} orden(es) confirmadas SIN ENVIAR</strong> (te falta${falta === 1 ? '' : 'n'} <strong>${falta}</strong> por completar). No cambies de patente sin enviarlas.`;
+          warn.classList.remove('hidden');
+        } else {
+          warn.classList.add('hidden');
+        }
+      }
+
       renderOrdenesListas();
     }
 
