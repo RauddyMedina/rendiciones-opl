@@ -1149,9 +1149,6 @@
         <div id="step2Progress"
           style="margin-top:12px; color:var(--accent3); font-size:13px; font-family:'DM Mono',monospace;"></div>
 
-        <div id="ordenesListasContainer"
-          style="margin-top:12px; display:flex; flex-direction:column; gap:8px;"></div>
-
         <button class="btn btn-primary" onclick="iniciarRendicion()" id="btnIniciarRendicion" disabled
           style="margin-top:16px;">
           Iniciar Rendición →
@@ -1161,6 +1158,11 @@
           ✓ Enviar todas las rendiciones
         </button>
         <button class="btn btn-ghost" onclick="volverPaso1()">← Cambiar patente</button>
+
+        <!-- Las órdenes confirmadas van DEBAJO de los botones para que estos
+             queden siempre visibles aunque se acumulen muchas órdenes -->
+        <div id="ordenesListasContainer"
+          style="margin-top:16px; display:flex; flex-direction:column; gap:8px;"></div>
       </div>
 
       <!-- Step 3: Rendir cada ID -->
