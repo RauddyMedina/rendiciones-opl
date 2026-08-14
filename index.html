@@ -1160,6 +1160,10 @@
           style="margin-top:12px;">
           ✓ Enviar todas las rendiciones
         </button>
+        <button class="btn btn-primary hidden" id="btnIrHojaRuta" onclick="irAHojaRuta()"
+          style="margin-top:12px;">
+          Continuar → Hoja de ruta
+        </button>
         <button class="btn btn-ghost" onclick="volverPaso1()">← Cambiar patente</button>
 
         <!-- Las órdenes confirmadas van DEBAJO de los botones para que estos
@@ -1177,6 +1181,51 @@
             <div class="step-desc">Completa cada orden seleccionada</div>
           </div>
         </div>
+      </div>
+
+      <!-- Hoja de ruta: respaldo de que el conductor supo del daño.
+           Solo aparece si esta patente tiene productos dañados. -->
+      <div class="step hidden" id="stepHojaRuta">
+        <div class="step-header">
+          <div class="step-num">4</div>
+          <div>
+            <div class="step-title">Hoja de Ruta</div>
+            <div class="step-desc">Respaldo de los productos rendidos con daños</div>
+          </div>
+        </div>
+
+        <div id="hojaRutaInstruccion"
+          style="margin-top:12px; padding:12px 14px; background:rgba(255,165,2,0.12); border:1px solid var(--warning); border-left:4px solid var(--warning); border-radius:8px; font-size:13px; color:var(--warning); line-height:1.45;">
+          ✍️ <strong>Anota en la hoja de ruta los productos que se rinden con daños</strong> y
+          sácale una foto. Es el respaldo de que el conductor supo del daño.
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">Productos que debes anotar</div>
+          <div id="hojaRutaListaDanados"
+            style="display:flex; flex-direction:column; gap:6px; font-size:13px; font-family:'DM Mono',monospace; color:var(--accent3);"></div>
+        </div>
+
+        <div class="field-group photo-upload">
+          <div class="field-label">
+            Foto de la hoja de ruta
+            <span style="color:var(--danger); font-size:10px; margin-left:6px;">* obligatorio</span>
+          </div>
+          <div class="photo-drop" id="drop-hojaruta"
+               ondragover="onDragOverHojaRuta(event)"
+               ondragleave="onDragLeaveHojaRuta()"
+               ondrop="onDropHojaRuta(event)">
+            <input type="file" accept="image/*" multiple capture="environment" onchange="onFileInputHojaRuta(event)">
+            <div class="photo-drop-icon">📷</div>
+            <div class="photo-drop-text"><strong>Toca para fotografiar</strong><br>o arrastra imágenes aquí</div>
+          </div>
+          <div class="photos-preview" id="preview-hojaruta"></div>
+        </div>
+
+        <button class="btn btn-success hidden" id="btnEnviarHojaRuta" onclick="enviarTodasRendiciones()">
+          ✓ Enviar todas las rendiciones
+        </button>
+        <button class="btn btn-ghost" onclick="volverAStep2DesdeHojaRuta()">← Volver a las órdenes</button>
       </div>
 
       <!-- Progress bar -->
@@ -1378,6 +1427,8 @@
       const urlParams = new URLSearchParams(window.location.search);
       const modoP = urlParams.get('prueba') === '1';
 
+      if (urlParams.get('selftest') === '1') { correrSelfTest(); return; }
+
       if (!modoP && !esDiaHabil(now)) {
         mostrarPantallaCerrada(now, dias, meses);
         return;
@@ -1391,6 +1442,61 @@
       document.getElementById('loginScreen').classList.remove('hidden');
       setTimeout(() => document.getElementById('nombreInput').focus(), 300);
       if (modoP) showToast('🔧 Modo prueba activo', '');
+    }
+
+    // ─── SELF-TEST (?selftest=1) ──────────────────────────────────
+    // Cubre la lógica pura del respaldo de hoja de ruta. Lo que protege:
+    // detectar bien qué patente tiene daños, y que la foto viaje UNA sola vez
+    // aunque el envío se parta en tandas (el record se re-manda entero en cada una).
+    function correrSelfTest() {
+      const fallas = [];
+      const ok = (cond, msg) => { if (!cond) fallas.push(msg); };
+
+      // ordenesConDano: cantidadDanados es el único criterio (marcarListo lo normaliza)
+      const simple = { a: { id: 'a', cantidadDanados: 1, cantidad: 1 } };
+      const grupo = { b: { id: 'b', cantidadDanados: 2, cantidad: 5 } };
+      const limpio = { c: { id: 'c', cantidadDanados: 0, cantidad: 3 } };
+      const terminal = { d: { id: 'd', cantidadDanados: 0, cantidad: 1 } };
+      ok(ordenesConDano(simple).length === 1, 'simple "Con Daños" debe contar como dañada');
+      ok(ordenesConDano(grupo).length === 1, 'grupo con cantDanados>0 debe contar como dañada');
+      ok(ordenesConDano(limpio).length === 0, 'todos_ok no debe pedir hoja de ruta');
+      ok(ordenesConDano(terminal).length === 0, 'estado terminal no debe pedir hoja de ruta');
+      ok(ordenesConDano({ ...simple, ...limpio }).length === 1, 'debe detectar la dañada entre limpias');
+
+      // construirSubPayload: la foto SOLO en la tanda 0, el flag en todas
+      const record = {
+        patente: 'ABCD12', fecha: '2026-08-13',
+        ordenes: [{ id: '1' }, { id: '2' }, { id: '3' }],
+        fotosHojaRuta: ['data:image/jpeg;base64,AAA'],
+        conHojaRuta: true
+      };
+      const subs = [[{ id: '1' }], [{ id: '2' }], [{ id: '3' }]]
+        .map((t, i) => construirSubPayload(record, t, i, 'sec'));
+      const veces = subs.reduce((n, s) => n + s.fotosHojaRuta.length, 0);
+      ok(veces === 1, `la hoja de ruta debe viajar 1 vez, viajó ${veces}`);
+      ok(subs[0].fotosHojaRuta.length === 1, 'la foto debe ir en la primera tanda');
+      ok(subs.every(s => s.conHojaRuta === true), 'conHojaRuta debe ir en TODAS las tandas');
+      ok(subs.every(s => s.secret === 'sec'), 'el secret debe ir en todas las tandas');
+      ok(subs[1].totalOrdenes === 1, 'totalOrdenes debe ser el de la tanda');
+
+      // Sin hoja de ruta, el flag queda en false
+      const sinHoja = construirSubPayload({ ...record, fotosHojaRuta: [] }, [{ id: '1' }], 0, 'sec');
+      ok(sinHoja.conHojaRuta === false, 'sin fotos, conHojaRuta debe ser false');
+
+      // partirEnTandas: el peso de la hoja de ruta cuenta en el corte
+      const gorda = { id: 'x', fotos: ['x'.repeat(TANDA_MAX_CHARS - 10000)] };
+      ok(partirEnTandas([gorda, { id: 'y', fotos: [] }], 0).length === 1,
+        'sin peso extra, las 2 órdenes entran en una tanda');
+      ok(partirEnTandas([gorda, { id: 'y', fotos: [] }], 50000).length === 2,
+        'con la hoja de ruta pesando, debe cortar en 2 tandas');
+
+      document.body.innerHTML =
+        `<pre style="padding:24px;font-size:15px;line-height:1.7;color:${fallas.length ? '#ff4757' : '#2ed573'}">` +
+        (fallas.length
+          ? `✗ ${fallas.length} falla(s):\n\n` + fallas.map(f => '  • ' + f).join('\n')
+          : '✓ Self-test OK — todos los asserts pasaron') +
+        '</pre>';
+      console.log(fallas.length ? fallas : 'Self-test OK');
     }
 
     async function cargarDatosDesdeSheet() {
@@ -1567,6 +1673,7 @@
       document.getElementById('step1').querySelector('.step-num').textContent = '✓';
 
       ordenesListas = {};
+      fotosHojaRuta = [];
       selectedIds = [];
       populateIdSelect();
       renderSelectedIds();
@@ -2085,6 +2192,113 @@
       checkCardComplete(id);
     }
 
+    // ─── HOJA DE RUTA ─────────────────────────────────────────────
+    // Foto del documento físico donde el bodeguero anota los productos que se
+    // rinden con daños. Es el respaldo de que el conductor supo, para cuando
+    // después se le asocie un cobro a la patente.
+    // Espeja addPhotos/renderPhotoPreviews/removePhoto (que están atados a
+    // rendiciones[id]) reusando compressPhoto(); la foto es por PATENTE, no por orden.
+    let fotosHojaRuta = [];
+
+    // Órdenes de esta patente con al menos una unidad dañada.
+    // cantidadDanados ya viene normalizado por marcarListo(): 1 en el modo simple
+    // "Con Daños", r.cantDanados en modo grupo, 0 en todo lo demás.
+    function ordenesConDano(fuente) {
+      const src = fuente || ordenesListas;
+      return Object.keys(src).map(id => src[id]).filter(o => (o.cantidadDanados || 0) > 0);
+    }
+
+    function addFotosHojaRuta(files) {
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          compressPhoto(e.target.result).then(compressed => {
+            fotosHojaRuta.push(compressed);
+            renderHojaRutaPreviews();
+            actualizarBotonHojaRuta();
+            guardarBorrador();
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderHojaRutaPreviews() {
+      const preview = document.getElementById('preview-hojaruta');
+      if (!preview) return;
+      preview.innerHTML = '';
+      fotosHojaRuta.forEach((data, idx) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'photo-thumb-wrap';
+        wrap.innerHTML = `
+      <img src="${data}" alt="hoja de ruta ${idx + 1}">
+      <button class="photo-remove" onclick="removeFotoHojaRuta(${idx})">×</button>
+    `;
+        preview.appendChild(wrap);
+      });
+    }
+
+    function removeFotoHojaRuta(idx) {
+      fotosHojaRuta.splice(idx, 1);
+      renderHojaRutaPreviews();
+      actualizarBotonHojaRuta();
+      guardarBorrador();
+    }
+
+    function onFileInputHojaRuta(event) {
+      addFotosHojaRuta(Array.from(event.target.files));
+    }
+
+    function onDragOverHojaRuta(e) {
+      e.preventDefault();
+      document.getElementById('drop-hojaruta').classList.add('dragover');
+    }
+
+    function onDragLeaveHojaRuta() {
+      document.getElementById('drop-hojaruta').classList.remove('dragover');
+    }
+
+    function onDropHojaRuta(e) {
+      e.preventDefault();
+      document.getElementById('drop-hojaruta').classList.remove('dragover');
+      addFotosHojaRuta(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+    }
+
+    // Mismo patrón que el resto de la app: el botón de enviar no existe hasta cumplir.
+    function actualizarBotonHojaRuta() {
+      const btn = document.getElementById('btnEnviarHojaRuta');
+      if (btn) btn.classList.toggle('hidden', fotosHojaRuta.length === 0);
+    }
+
+    function irAHojaRuta() {
+      const danados = ordenesConDano();
+      const lista = document.getElementById('hojaRutaListaDanados');
+      if (lista) {
+        lista.innerHTML = danados.map(o =>
+          `<div>• <strong>${o.id}</strong> ${o.producto || ''} ` +
+          `<span style="color:var(--danger)">(${o.cantidadDanados} con daño)</span></div>`
+        ).join('');
+      }
+      renderHojaRutaPreviews();
+      actualizarBotonHojaRuta();
+      document.getElementById('step2').classList.add('hidden');
+      document.getElementById('step2').classList.remove('active');
+      const paso = document.getElementById('stepHojaRuta');
+      paso.classList.remove('hidden');
+      paso.classList.add('active');
+      paso.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function volverAStep2DesdeHojaRuta() {
+      const paso = document.getElementById('stepHojaRuta');
+      paso.classList.add('hidden');
+      paso.classList.remove('active');
+      document.getElementById('step2').classList.remove('hidden');
+      document.getElementById('step2').classList.add('active');
+      actualizarBotonesStep2();
+      document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function checkCardComplete(id) {
       const r = rendiciones[id];
       let ok = false;
@@ -2186,8 +2400,14 @@
       const done = Object.keys(ordenesListas).length;
       const progEl = document.getElementById('step2Progress');
       if (progEl) progEl.textContent = done > 0 ? `${done}/${total} órdenes completadas` : '';
+      // Si la patente tiene daños, el envío pasa por la hoja de ruta: se muestra
+      // "Continuar" en vez de "Enviar". Sin daños, el flujo queda como antes.
+      const completo = done >= total;
+      const conDano = ordenesConDano().length > 0;
       const btnEnviarStep2 = document.getElementById('btnEnviarStep2');
-      if (btnEnviarStep2) btnEnviarStep2.classList.toggle('hidden', done < total);
+      if (btnEnviarStep2) btnEnviarStep2.classList.toggle('hidden', !completo || conDano);
+      const btnHojaRuta = document.getElementById('btnIrHojaRuta');
+      if (btnHojaRuta) btnHojaRuta.classList.toggle('hidden', !completo || !conDano);
       document.getElementById('btnIniciarRendicion').disabled = selectedIds.length === 0;
 
       // Aviso: hay órdenes confirmadas que TODAVÍA no se enviaron al sistema.
@@ -2411,7 +2631,7 @@
         await new Promise((resolve, reject) => {
           const tx = db.transaction(DRAFT_STORE, 'readwrite');
           tx.objectStore(DRAFT_STORE).put(
-            { fecha: hoy, patente: selectedPatente, bodeguero: bodegueroNombre, ordenesListas },
+            { fecha: hoy, patente: selectedPatente, bodeguero: bodegueroNombre, ordenesListas, fotosHojaRuta },
             hoy + '::' + selectedPatente
           );
           tx.oncomplete = resolve;
@@ -2503,6 +2723,9 @@
         return;
       }
       ordenesListas = restauradas;
+      // La foto de la hoja de ruta también se restaura: si no, tras un refresh
+      // el bodeguero tendría que volver a sacarla (y la hoja ya está firmada/anotada).
+      fotosHojaRuta = draft.fotosHojaRuta || [];
       populateIdSelect();
       renderSelectedIds();
       actualizarBotonesStep2();
@@ -2521,6 +2744,8 @@
     function recordSinFotos(record) {
       return {
         ...record,
+        // La hoja de ruta también es base64 y también revienta la cuota si entra.
+        fotosHojaRuta: (record.fotosHojaRuta || []).map((f, i) => `hoja${i + 1}.jpg`),
         ordenes: record.ordenes.map(o => ({
           ...o,
           fotos: o.fotos ? o.fotos.map((f, i) => `foto${i + 1}.jpg`) : []
@@ -2594,9 +2819,11 @@
     // Tope aproximado de fotos por tanda (caracteres base64 ≈ bytes)
     const TANDA_MAX_CHARS = 2500000;
 
-    function partirEnTandas(ordenes) {
+    // pesoExtra: chars que viajan fuera de `ordenes` en la PRIMERA tanda
+    // (hoy, las fotos de la hoja de ruta). Sin contarlo, esa tanda se pasaría del tope.
+    function partirEnTandas(ordenes, pesoExtra = 0) {
       const tandas = [];
-      let actual = [], acum = 0;
+      let actual = [], acum = pesoExtra;
       for (const o of ordenes) {
         const peso = (o.fotos || []).reduce((s, f) => s + (f ? f.length : 0), 0) + 2000;
         if (actual.length > 0 && acum + peso > TANDA_MAX_CHARS) {
@@ -2611,6 +2838,26 @@
       return tandas;
     }
 
+    // Payload de UNA tanda. Las fotos de la hoja de ruta van SOLO en la primera:
+    // el record se re-manda entero en cada tanda, así que sin este corte la misma
+    // foto se subiría tantas veces como tandas haya.
+    // conHojaRuta en cambio va en TODAS, porque es lo que marca la columna del
+    // Sheet y las filas de las tandas 2+ también la necesitan.
+    function construirSubPayload(record, tanda, i, secret) {
+      return {
+        ...record,
+        ordenes: tanda,
+        totalOrdenes: tanda.length,
+        fotosHojaRuta: i === 0 ? (record.fotosHojaRuta || []) : [],
+        conHojaRuta: (record.fotosHojaRuta || []).length > 0,
+        secret: secret
+      };
+    }
+
+    function pesoFotos(fotos) {
+      return (fotos || []).reduce((s, f) => s + (f ? f.length : 0), 0);
+    }
+
     // Estado del envío en curso — permite reanudar las tandas pendientes
     // con el botón "Reintentar envío" sin rehacer la rendición.
     let envioEnCurso = null;
@@ -2620,7 +2867,11 @@
         actualizarReceiptStatus('⚠️ GAS_URL no configurado');
         return;
       }
-      envioEnCurso = { record, tandas: partirEnTandas(record.ordenes), idx: 0 };
+      envioEnCurso = {
+        record,
+        tandas: partirEnTandas(record.ordenes, pesoFotos(record.fotosHojaRuta)),
+        idx: 0
+      };
       await procesarEnvioPendiente();
     }
 
@@ -2645,7 +2896,7 @@
             ? `⏳ Enviando tanda ${i + 1}/${total} (${ids.length} orden(es))...`
             : '⏳ Enviando al sistema...');
 
-          const sub = { ...record, ordenes: tanda, totalOrdenes: tanda.length, secret: GAS_SECRET };
+          const sub = construirSubPayload(record, tanda, i, GAS_SECRET);
 
           // Disparar el POST sin bloquear; la fila del Sheet aparece a los
           // ~1-3s (flush antes de la subida lenta de fotos a GitHub).
@@ -2795,7 +3046,19 @@
     async function enviarTodasRendiciones() {
       const ids = Object.keys(ordenesListas);
       if (ids.length === 0) return;
-      const btn = document.getElementById('btnEnviarStep2');
+
+      // Doble check: si hay daños, la hoja de ruta es obligatoria. El botón ya
+      // está oculto sin foto, pero el handler nunca confía en el botón (mismo
+      // patrón que marcarListo / confirmarPatente).
+      if (ordenesConDano().length > 0 && fotosHojaRuta.length === 0) {
+        showToast('Falta la foto de la hoja de ruta', 'error');
+        irAHojaRuta();
+        return;
+      }
+
+      const btn = document.getElementById('btnEnviarHojaRuta').classList.contains('hidden')
+        ? document.getElementById('btnEnviarStep2')
+        : document.getElementById('btnEnviarHojaRuta');
       btn.disabled = true;
       btn.textContent = 'Enviando...';
 
@@ -2807,7 +3070,9 @@
           bodeguero: bodegueroNombre,
           patente: selectedPatente,
           totalOrdenes: ids.length,
-          ordenes: ids.map(id => ordenesListas[id])
+          ordenes: ids.map(id => ordenesListas[id]),
+          fotosHojaRuta: fotosHojaRuta,
+          conHojaRuta: fotosHojaRuta.length > 0
         };
 
         // Cambiar a la pantalla de éxito PRIMERO, antes de cualquier trabajo
@@ -2907,6 +3172,8 @@
 
       document.getElementById('step2').classList.add('hidden');
       document.getElementById('step3').classList.add('hidden');
+      document.getElementById('stepHojaRuta').classList.add('hidden');
+      document.getElementById('stepHojaRuta').classList.remove('active');
       document.getElementById('progressBar').classList.add('hidden');
       document.getElementById('idsContainer').classList.add('hidden');
       document.getElementById('finalSection').classList.add('hidden');
@@ -2920,6 +3187,11 @@
       btnEnviarStep2.disabled = false;
       btnEnviarStep2.textContent = '✓ Enviar todas las rendiciones';
       btnEnviarStep2.classList.add('hidden');
+      const btnEnvHoja = document.getElementById('btnEnviarHojaRuta');
+      btnEnvHoja.disabled = false;
+      btnEnvHoja.textContent = '✓ Enviar todas las rendiciones';
+      btnEnvHoja.classList.add('hidden');
+      document.getElementById('btnIrHojaRuta').classList.add('hidden');
       const progEl = document.getElementById('step2Progress');
       if (progEl) progEl.textContent = '';
       mostrarBtnReintentar(false);
@@ -2928,6 +3200,7 @@
       selectedIds = [];
       rendiciones = {};
       ordenesListas = {};
+      fotosHojaRuta = [];
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
