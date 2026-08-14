@@ -1483,6 +1483,36 @@
       const sinHoja = construirSubPayload({ ...record, fotosHojaRuta: [] }, [{ id: '1' }], 0, 'sec');
       ok(sinHoja.conHojaRuta === false, 'sin fotos, conHojaRuta debe ser false');
 
+      // esCardCompleta: las fotos son obligatorias SOLO donde hay daño.
+      // Protege que habilitar fotos en "Nuevo" no las vuelva obligatorias,
+      // ni afloje la exigencia de "Con Daños".
+      const card = (extra) => ({
+        count: 1, estado: '', grupoMode: '', bultos: 0,
+        cantDanados: 0, estadoOK: '', tiposDano: '', fotosData: [], ...extra
+      });
+      ok(esCardCompleta(card({ estado: 'Nuevo', bultos: 2 })),
+        '"Nuevo" sin fotos debe poder confirmarse (son opcionales)');
+      ok(esCardCompleta(card({ estado: 'Nuevo', bultos: 2, fotosData: ['f'] })),
+        '"Nuevo" con fotos debe poder confirmarse');
+      ok(esCardCompleta(card({ estado: 'Entre', bultos: 1 })),
+        '"Entre" sin fotos debe seguir pudiendo confirmarse');
+      ok(!esCardCompleta(card({ estado: 'Nuevo', bultos: 0 })),
+        '"Nuevo" sin bultos NO debe confirmarse');
+      ok(!esCardCompleta(card({ estado: 'Con Daños', bultos: 1, tiposDano: 'Golpe' })),
+        '"Con Daños" sin fotos NO debe confirmarse (regresión)');
+      ok(!esCardCompleta(card({ estado: 'Con Daños', bultos: 1, fotosData: ['f'] })),
+        '"Con Daños" sin tipo de daño NO debe confirmarse');
+      ok(esCardCompleta(card({ estado: 'Con Daños', bultos: 1, tiposDano: 'Golpe', fotosData: ['f'] })),
+        '"Con Daños" completo debe confirmarse');
+      ok(esCardCompleta(card({ count: 5, grupoMode: 'todos_ok', estado: 'Nuevo', bultos: 5 })),
+        'grupo "Todas OK → Nuevo" sin fotos debe confirmarse');
+      ok(!esCardCompleta(card({ count: 5, grupoMode: 'hay_danados', cantDanados: 5, bultos: 5, tiposDano: 'Golpe' })),
+        'grupo "Hay dañadas" sin fotos NO debe confirmarse (regresión)');
+      ok(!esCardCompleta(card({ count: 5, grupoMode: 'hay_danados', cantDanados: 2, bultos: 5, tiposDano: 'Golpe', fotosData: ['f'] })),
+        'grupo con dañadas parciales y sin estadoOK NO debe confirmarse');
+      ok(esCardCompleta(card({ count: 5, grupoMode: 'no_retirado' })),
+        'grupo terminal debe confirmarse sin nada');
+
       // partirEnTandas: el peso de la hoja de ruta cuenta en el corte
       const gorda = { id: 'x', fotos: ['x'.repeat(TANDA_MAX_CHARS - 10000)] };
       ok(partirEnTandas([gorda, { id: 'y', fotos: [] }], 0).length === 1,
@@ -1882,10 +1912,16 @@
               <option value="Otro">Otro</option>
             </select>
           </div>
+        </div>
+
+        <div id="shared-${id}" style="display:none;">
+          <!-- Las fotos viven acá (y no dentro de section-haydanados) para que también
+               estén disponibles con "Todas OK → Nuevo". setGrupoMode() ajusta la etiqueta:
+               obligatoria si hay dañadas, opcional si no. -->
           <div class="field-group photo-upload" id="fotos-section-${id}">
             <div class="field-label">
-              Fotografías de las unidades dañadas
-              <span style="color:var(--danger); font-size:10px; margin-left:6px;">* obligatorio</span>
+              <span id="fotos-label-${id}">Fotografías</span>
+              <span id="fotos-req-${id}" style="color:var(--danger); font-size:10px; margin-left:6px;"></span>
             </div>
             <div class="photo-drop" id="drop-${id}"
                  ondragover="onDragOver(event,'${id}')"
@@ -1897,9 +1933,6 @@
             </div>
             <div class="photos-preview" id="preview-${id}"></div>
           </div>
-        </div>
-
-        <div id="shared-${id}" style="display:none;">
           <div class="field-group">
             <div class="field-label">Cantidad de Bultos Recibidos</div>
             <input type="number" class="bultos-input" id="bultos-${id}" min="1" max="999" placeholder="${r.count}" oninput="onBultosChange('${id}')">
@@ -2005,14 +2038,14 @@
       const bultosGroup = document.getElementById(`bultos-group-${id}`);
       if (bultosGroup) bultosGroup.style.display = 'block';
 
-      if (estado === 'Nuevo') {
-        document.getElementById(`btn-nuevo-${id}`).className = 'estado-btn selected-nuevo';
+      if (estado === 'Nuevo' || estado === 'Entre') {
+        // Ambos son "sin daño": fotos visibles pero OPCIONALES. 'Nuevo' antes las
+        // escondía, así que no se podía dejar respaldo aunque se quisiera.
+        const esNuevo = estado === 'Nuevo';
+        document.getElementById(`btn-${esNuevo ? 'nuevo' : 'entre'}-${id}`).className =
+          `estado-btn selected-${esNuevo ? 'nuevo' : 'entre'}`;
         danoSection.classList.remove('visible');
-        fotosSection.style.display = 'none';   // ocultar fotos
-      } else if (estado === 'Entre') {
-        document.getElementById(`btn-entre-${id}`).className = 'estado-btn selected-entre';
-        danoSection.classList.remove('visible');
-        fotosSection.style.display = 'block';  // fotos opcionales
+        fotosSection.style.display = 'block';
         fotosReq.textContent = '(opcional)';
       } else if (estado === 'Con Daños') {
         document.getElementById(`btn-danado-${id}`).className = 'estado-btn selected-danado';
@@ -2061,6 +2094,14 @@
         checkCardComplete(id);
         return;
       }
+
+      // Fotos: obligatorias solo si hay unidades dañadas. Con "Todas OK" quedan
+      // disponibles igual (opcionales), que es el punto del cambio.
+      const hayDanados = mode === 'hay_danados';
+      const lbl = document.getElementById(`fotos-label-${id}`);
+      const req = document.getElementById(`fotos-req-${id}`);
+      if (lbl) lbl.textContent = hayDanados ? 'Fotografías de las unidades dañadas' : 'Fotografías';
+      if (req) req.textContent = hayDanados ? '* obligatorio' : '(opcional)';
 
       // pre-fill bultos con la cantidad
       const bultosEl = document.getElementById(`bultos-${id}`);
@@ -2299,29 +2340,35 @@
       document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    function checkCardComplete(id) {
-      const r = rendiciones[id];
-      let ok = false;
-
+    // ¿La orden tiene todo lo necesario para confirmarse? Pura (no toca el DOM) para
+    // poder cubrirla con ?selftest=1: es la regla que decide qué se exige y qué no.
+    // Las fotos SOLO son obligatorias donde hay daño; en 'Nuevo'/'Entre' son opcionales.
+    function esCardCompleta(r) {
       if (r.count > 1) {
         if (r.grupoMode === 'no_retirado' || r.grupoMode === 'no_rendido') {
-          ok = true; // estados terminales: no requieren bultos ni fotos
-        } else if (r.grupoMode === 'todos_ok') {
-          ok = r.estado !== '' && r.bultos > 0;
-        } else if (r.grupoMode === 'hay_danados') {
-          ok = r.cantDanados > 0 && r.bultos > 0 && r.tiposDano !== '' && r.fotosData.length > 0;
-          if (r.cantDanados < r.count && !r.estadoOK) ok = false;
+          return true; // estados terminales: no requieren bultos ni fotos
         }
-      } else if (r.estado === 'No Retirado' || r.estado === 'Producto no rendido') {
-        ok = true; // estados terminales: no requieren bultos ni fotos
-      } else {
-        ok = r.estado !== '' && r.bultos > 0;
-        if (r.estado === 'Con Daños') {
-          if (!r.tiposDano) ok = false;
-          if (r.fotosData.length === 0) ok = false;
+        if (r.grupoMode === 'todos_ok') {
+          return r.estado !== '' && r.bultos > 0;
         }
+        if (r.grupoMode === 'hay_danados') {
+          if (r.cantDanados < r.count && !r.estadoOK) return false;
+          return r.cantDanados > 0 && r.bultos > 0 && r.tiposDano !== '' && r.fotosData.length > 0;
+        }
+        return false;
       }
 
+      if (r.estado === 'No Retirado' || r.estado === 'Producto no rendido') {
+        return true; // estados terminales: no requieren bultos ni fotos
+      }
+      if (r.estado === 'Con Daños') {
+        return r.bultos > 0 && !!r.tiposDano && r.fotosData.length > 0;
+      }
+      return r.estado !== '' && r.bultos > 0;
+    }
+
+    function checkCardComplete(id) {
+      const ok = esCardCompleta(rendiciones[id]);
       document.getElementById(`btn-listo-${id}`).disabled = !ok;
       return ok;
     }
