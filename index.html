@@ -1488,12 +1488,31 @@
       // ni afloje la exigencia de "Con Daños".
       const card = (extra) => ({
         count: 1, estado: '', grupoMode: '', bultos: 0,
-        cantDanados: 0, estadoOK: '', tiposDano: '', fotosData: [], ...extra
+        cantDanados: 0, estadoOK: '', tiposDano: '', fotosData: [],
+        docsData: [], requiereDoc: false, ...extra
       });
       ok(esCardCompleta(card({ estado: 'Nuevo', bultos: 2 })),
         '"Nuevo" sin fotos debe poder confirmarse (son opcionales)');
       ok(esCardCompleta(card({ estado: 'Nuevo', bultos: 2, fotosData: ['f'] })),
         '"Nuevo" con fotos debe poder confirmarse');
+
+      // Documento de retiro: sólo se exige cuando el retiro se concretó.
+      ok(!esCardCompleta(card({ estado: 'Nuevo', bultos: 1, fotosData: ['f'], requiereDoc: true })),
+        'retiro hecho SIN documento no debe confirmarse');
+      ok(esCardCompleta(card({ estado: 'Nuevo', bultos: 1, fotosData: ['f'], requiereDoc: true, docsData: ['d'] })),
+        'retiro hecho CON documento debe confirmarse');
+      ok(esCardCompleta(card({ estado: 'Nuevo', bultos: 1, fotosData: ['f'], requiereDoc: false })),
+        'un pedido normal no necesita documento');
+      ok(esRetiroHecho({ id: '385588443', subestado: 'Retirado' }),
+        'subestado "Retirado" es un retiro concretado');
+      ok(esRetiroHecho({ id: '80948601', subestado: 'RETIRO · Entregado' }),
+        'un retorno de Paris entregado es un retiro concretado');
+      ok(!esRetiroHecho({ id: '80948601', subestado: 'RETIRO · No recogido' }),
+        'un retorno que no se pudo recoger NO exige documento');
+      ok(!esRetiroHecho({ id: '385588902', subestado: 'Despacho Adelantado' }),
+        'retiro NO concretado no exige documento');
+      ok(!esRetiroHecho({ id: '2919212886', subestado: 'Sin Moradores' }),
+        'un pedido normal nunca exige documento');
       ok(esCardCompleta(card({ estado: 'Entre', bultos: 1 })),
         '"Entre" sin fotos debe seguir pudiendo confirmarse');
       ok(!esCardCompleta(card({ estado: 'Nuevo', bultos: 0 })),
@@ -1819,7 +1838,7 @@
       rendiciones = {};
       selectedIds.forEach(id => {
         const count = selectedGroupedItem && selectedGroupedItem.id === id ? selectedGroupedItem.count : 1;
-        rendiciones[id] = { estado: '', tiposDano: '', observacion: '', bultos: 0, fotos: [], fotosData: [], count, grupoMode: null, cantDanados: 0, estadoOK: '' };
+        rendiciones[id] = { estado: '', tiposDano: '', observacion: '', bultos: 0, fotos: [], fotosData: [], docsData: [], requiereDoc: false, count, grupoMode: null, cantDanados: 0, estadoOK: '' };
       });
 
       renderIDCards();
@@ -1839,6 +1858,20 @@
       return String(item && item.id || '').startsWith('38') || /recogid|retorno|retiro/.test(sub);
     }
 
+    // Un retiro CONCRETADO: el producto efectivamente volvió con el camión. Sólo a
+    // estos se les exige el documento de retiro; si no se pudo retirar ("No recogido",
+    // "Despacho Adelantado"...) no hay producto ni papel que fotografiar.
+    // El subestado llega como "RETIRO · Entregado" cuando la planilla ya lo marcó como
+    // retiro (hace falta porque un retorno de Paris puede venir rebajado como
+    // "Entregado" y no habría cómo distinguirlo). Se mira la parte de después del punto.
+    function esRetiroHecho(item) {
+      if (!esRetiro(item)) return false;
+      const sub = (item && item.subestado || '').toLowerCase();
+      const estado = (sub.split('·').pop() || '').trim();
+      if (estado.startsWith('no ')) return false;   // "no recogido", "no entregado"
+      return /retirado|entregado|recogido/.test(estado);
+    }
+
     function renderIDCards() {
       const container = document.getElementById('idsContainer');
       container.innerHTML = '';
@@ -1847,6 +1880,7 @@
         const items = rendicionData[selectedPatente] || [];
         const item = items.find(x => x.id === id) || { id, subestado: '', producto: '' };
         const r = rendiciones[id];
+        if (r) r.requiereDoc = esRetiroHecho(item);
 
         const card = document.createElement('div');
         card.className = 'id-card';
@@ -1918,9 +1952,25 @@
           <!-- Las fotos viven acá (y no dentro de section-haydanados) para que también
                estén disponibles con "Todas OK → Nuevo". setGrupoMode() ajusta la etiqueta:
                obligatoria si hay dañadas, opcional si no. -->
+          ${esRetiroHecho(item) ? `
+          <!-- Retiro concretado: primero el documento. Las fotos del producto quedan
+               bloqueadas hasta que haya al menos una, para que el bodeguero no reciba
+               el retiro sin exigirle el papel al transportista. -->
+          <div class="field-group photo-upload" id="doc-section-${id}">
+            <div class="field-label">
+              <span>1. Documento de retiro</span>
+              <span style="color:var(--danger); font-size:10px; margin-left:6px;">obligatorio</span>
+            </div>
+            <div class="photo-drop" id="docdrop-${id}">
+              <input type="file" accept="image/*" multiple capture="environment" onchange="onDocInput(event,'${id}')">
+              <div class="photo-drop-icon">📄</div>
+              <div class="photo-drop-text"><strong>Fotografía el documento</strong><br>guía o acta de retiro</div>
+            </div>
+            <div class="photos-preview" id="docpreview-${id}"></div>
+          </div>` : ''}
           <div class="field-group photo-upload" id="fotos-section-${id}">
             <div class="field-label">
-              <span id="fotos-label-${id}">Fotografías</span>
+              <span id="fotos-label-${id}">${esRetiroHecho(item) ? '2. Fotografías del producto' : 'Fotografías'}</span>
               <span id="fotos-req-${id}" style="color:var(--danger); font-size:10px; margin-left:6px;"></span>
             </div>
             <div class="photo-drop" id="drop-${id}"
@@ -2181,6 +2231,65 @@
       addPhotos(id, Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
     }
 
+    // El documento de retiro va por su propia lista para que se pueda exigir aparte y
+    // el bodeguero vea claro qué le falta.
+    function onDocInput(event, id) {
+      addDocs(id, Array.from(event.target.files));
+    }
+
+    function addDocs(id, files) {
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          compressPhoto(e.target.result).then(compressed => {
+            rendiciones[id].docsData.push(compressed);
+            renderDocPreviews(id);
+            aplicarBloqueoProducto(id);
+            checkCardComplete(id);
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderDocPreviews(id) {
+      const cont = document.getElementById(`docpreview-${id}`);
+      if (!cont) return;
+      cont.innerHTML = (rendiciones[id].docsData || []).map((src, i) =>
+        `<div class="photo-thumb"><img src="${src}" alt="documento ${i + 1}">` +
+        `<button class="photo-remove" onclick="quitarDoc('${id}',${i})">×</button></div>`
+      ).join('');
+    }
+
+    function quitarDoc(id, i) {
+      rendiciones[id].docsData.splice(i, 1);
+      renderDocPreviews(id);
+      aplicarBloqueoProducto(id);
+      checkCardComplete(id);
+    }
+
+    // Sin documento no se habilitan las fotos del producto: es lo que obliga a pedirle
+    // la guía al transportista antes de recibir.
+    function aplicarBloqueoProducto(id) {
+      const r = rendiciones[id];
+      const seccion = document.getElementById(`fotos-section-${id}`);
+      if (!seccion || !r || !r.requiereDoc) return;
+      const falta = !(r.docsData && r.docsData.length);
+      const drop = document.getElementById(`drop-${id}`);
+      if (drop) {
+        drop.style.opacity = falta ? '0.45' : '';
+        drop.style.pointerEvents = falta ? 'none' : '';
+        const input = drop.querySelector('input[type=file]');
+        if (input) input.disabled = falta;
+      }
+      const etq = document.getElementById(`fotos-label-${id}`);
+      if (etq) {
+        etq.textContent = falta
+          ? '2. Fotografías del producto — primero el documento'
+          : '2. Fotografías del producto';
+      }
+    }
+
     function addPhotos(id, files) {
       files.forEach(file => {
         const reader = new FileReader();
@@ -2344,6 +2453,8 @@
     // poder cubrirla con ?selftest=1: es la regla que decide qué se exige y qué no.
     // Las fotos SOLO son obligatorias donde hay daño; en 'Nuevo'/'Entre' son opcionales.
     function esCardCompleta(r) {
+      // Retiro concretado: sin el documento no se cierra, pase lo que pase con el resto.
+      if (r.requiereDoc && !(r.docsData && r.docsData.length)) return false;
       if (r.count > 1) {
         if (r.grupoMode === 'no_retirado' || r.grupoMode === 'no_rendido') {
           return true; // estados terminales: no requieren bultos ni fotos
