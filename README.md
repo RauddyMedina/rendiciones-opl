@@ -58,6 +58,52 @@ configurable para los domingos que sí se trabaja.
 
 ---
 
+## La lista ya no se llena a mano (2026-09-11)
+
+La pestaña `rendiciones` que alimenta esta app se mantenía a mano y de ahí venían dos
+problemas, los dos resueltos en `tools/rendiciones.py` del proyecto claude:
+
+**1. Patentes que no son de la operación.** Se reconocen solas: las activas llevan
+conductor **"RUTA A", "RUTA B"…**. `DEVL02` (conductor "REINGRESOS CD") queda fuera sin
+mantener ninguna lista.
+
+**2. Los retiros desaparecían.** El filtro manual era "subestado distinto de Entregado",
+y cuando alguien rebajaba un retiro como *Entregado - Entregado* se caía de la lista sin
+que nadie lo rindiera. Ahora **el retiro entra siempre y sólo sale con la foto**.
+
+Un pedido sale de la lista cuando tiene foto **del día de su ruta o posterior** — no basta
+el ID: `Historial_Rendiciones` acumula desde abril y un pedido rendido hace meses puede
+volver a fallar hoy.
+
+Se conserva lo escrito a mano en "QUIEN VUELVE A SACAR A RUTA" y lo pendiente de días
+anteriores. Y si el pedido vuelve a salir a ruta, su fecha se actualiza sola y el plazo
+de las 24 h se reinicia: es el caso de "se lo llevó el mismo driver".
+
+### Documento de retiro obligatorio
+
+En los retiros **concretados** la app pide primero la guía y deja las fotos del producto
+bloqueadas hasta que haya al menos una:
+
+```
+1. Documento de retiro        obligatorio
+2. Fotografías del producto — primero el documento   (en gris)
+```
+
+Así el bodeguero le exige el papel al transportista antes de recibir. En los retiros que
+**no** se concretaron no se pide nada: no hubo producto ni documento.
+
+⚠️ **Por qué el subestado llega como "RETIRO · Entregado":** `esRetiro()` reconocía los
+retiros por texto, y un retorno de Paris rebajado como "Entregado" era indistinguible de
+un despacho normal. Lo detectó el propio selftest de la app. La planilla ahora lo marca,
+y de paso el bodeguero ve claro que lo que recibe es un retiro.
+
+### Aviso de lo que falta rendir
+
+Un correo diario (variable `RENDICIONES_TO`) con lo que lleva **más de 24 h sin foto**,
+agrupado por patente y ordenado por antigüedad. **No reclama los retiros no realizados**:
+sin producto en bodega no hay nada que fotografiar, y reclamarlos habría quemado la
+credibilidad del aviso el primer día (de 13 pendientes reales, 8 eran de ese tipo).
+
 ## Arquitectura
 
 ```
