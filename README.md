@@ -71,9 +71,18 @@ mantener ninguna lista.
 y cuando alguien rebajaba un retiro como *Entregado - Entregado* se caía de la lista sin
 que nadie lo rindiera. Ahora **el retiro entra siempre y sólo sale con la foto**.
 
-Un pedido sale de la lista cuando tiene foto **del día de su ruta o posterior** — no basta
-el ID: `Historial_Rendiciones` acumula desde abril y un pedido rendido hace meses puede
-volver a fallar hoy.
+Un pedido sale de la lista cuando la rendición es **posterior a su último evento**, con
+hora y no sólo con fecha. Dos cosas que costaron aprender:
+
+- No basta con que el ID esté en `Historial_Rendiciones`: acumula desde abril y un pedido
+  rendido hace meses puede volver a fallar hoy.
+- **Tampoco basta comparar el día.** El bodeguero rinde en la mañana y el pedido puede
+  volver a salir y fallar esa misma tarde (11-09: tres rendidos a las 08:15 y 09:16
+  fallaron de nuevo a las 11:24, 12:39 y 20:34). La referencia es la `Fecha Llegada` del
+  pedido.
+- **"PRODUCTO NO RENDIDO" no cierra nada**: es el bodeguero declarando que el producto no
+  estaba, no una rendición. Pasó con un retiro marcado así a las 08:15 que se concretó a
+  las 17:15.
 
 Se conserva lo escrito a mano en "QUIEN VUELVE A SACAR A RUTA" y lo pendiente de días
 anteriores. Y si el pedido vuelve a salir a ruta, su fecha se actualiza sola y el plazo
