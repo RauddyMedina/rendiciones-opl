@@ -1503,6 +1503,22 @@
         'retiro hecho CON documento debe confirmarse');
       ok(esCardCompleta(card({ estado: 'Nuevo', bultos: 1, fotosData: ['f'], requiereDoc: false })),
         'un pedido normal no necesita documento');
+
+      // El bloque del documento tiene que EXISTIR en la card de UNA unidad, que es como
+      // llegan casi todos los retiros. Vivía sólo en la de grupo: se exigía un documento
+      // que no había dónde sacar y la orden no se podía confirmar nunca (KLDS81, 12-09).
+      ok(bloqueDoc({ id: '80954192', subestado: 'RETIRO · Recogido - Definitivo' }, '80954192')
+        .includes('docdrop-80954192'), 'un retiro concretado debe mostrar el bloque del documento');
+      ok(bloqueDoc({ id: '2919173252', subestado: 'Sin Moradores' }, 'x') === '',
+        'un despacho normal no debe pedir documento de retiro');
+      ok(bloqueDoc({ id: '80959851', subestado: 'RETIRO · Despacho Adelantado' }, 'x') === '',
+        'un retiro que no se concretó no tiene documento que fotografiar');
+
+      // Declarar que no volvió nada no puede quedar trabado por el documento.
+      ok(esCardCompleta(card({ estado: 'No Retirado', requiereDoc: true })),
+        '"No Retirado" no puede exigir documento: no hay papel que sacar');
+      ok(esCardCompleta(card({ count: 3, grupoMode: 'no_rendido', requiereDoc: true })),
+        '"No rendido" de un grupo tampoco puede exigir el documento');
       ok(esRetiroHecho({ id: '385588443', subestado: 'Retirado' }),
         'subestado "Retirado" es un retiro concretado');
       ok(esRetiroHecho({ id: '80948601', subestado: 'RETIRO · Entregado' }),
@@ -1872,6 +1888,28 @@
       return /retirado|entregado|recogido/.test(estado);
     }
 
+    // Retiro concretado: primero el documento. Las fotos del producto quedan bloqueadas
+    // hasta que haya al menos una, para que el bodeguero no reciba el retiro sin exigirle
+    // el papel al transportista. Va en las DOS variantes de card (una unidad y grupo):
+    // vivía sólo en la de grupo, así que un retiro de una unidad exigía un documento que
+    // no tenía dónde sacarse y la orden no se podía confirmar nunca.
+    function bloqueDoc(item, id) {
+      if (!esRetiroHecho(item)) return '';
+      return `
+          <div class="field-group photo-upload" id="doc-section-${id}">
+            <div class="field-label">
+              <span>1. Documento de retiro</span>
+              <span style="color:var(--danger); font-size:10px; margin-left:6px;">obligatorio</span>
+            </div>
+            <div class="photo-drop" id="docdrop-${id}">
+              <input type="file" accept="image/*" multiple capture="environment" onchange="onDocInput(event,'${id}')">
+              <div class="photo-drop-icon">📄</div>
+              <div class="photo-drop-text"><strong>Fotografía el documento</strong><br>guía o acta de retiro</div>
+            </div>
+            <div class="photos-preview" id="docpreview-${id}"></div>
+          </div>`;
+    }
+
     function renderIDCards() {
       const container = document.getElementById('idsContainer');
       container.innerHTML = '';
@@ -1952,22 +1990,7 @@
           <!-- Las fotos viven acá (y no dentro de section-haydanados) para que también
                estén disponibles con "Todas OK → Nuevo". setGrupoMode() ajusta la etiqueta:
                obligatoria si hay dañadas, opcional si no. -->
-          ${esRetiroHecho(item) ? `
-          <!-- Retiro concretado: primero el documento. Las fotos del producto quedan
-               bloqueadas hasta que haya al menos una, para que el bodeguero no reciba
-               el retiro sin exigirle el papel al transportista. -->
-          <div class="field-group photo-upload" id="doc-section-${id}">
-            <div class="field-label">
-              <span>1. Documento de retiro</span>
-              <span style="color:var(--danger); font-size:10px; margin-left:6px;">obligatorio</span>
-            </div>
-            <div class="photo-drop" id="docdrop-${id}">
-              <input type="file" accept="image/*" multiple capture="environment" onchange="onDocInput(event,'${id}')">
-              <div class="photo-drop-icon">📄</div>
-              <div class="photo-drop-text"><strong>Fotografía el documento</strong><br>guía o acta de retiro</div>
-            </div>
-            <div class="photos-preview" id="docpreview-${id}"></div>
-          </div>` : ''}
+          ${bloqueDoc(item, id)}
           <div class="field-group photo-upload" id="fotos-section-${id}">
             <div class="field-label">
               <span id="fotos-label-${id}">${esRetiroHecho(item) ? '2. Fotografías del producto' : 'Fotografías'}</span>
@@ -1999,6 +2022,7 @@
         } else {
           bodyHTML = `
         ${subestedoChip}
+        ${bloqueDoc(item, id)}
         <div class="field-group">
           <div class="field-label">Estado del Producto</div>
           <div class="estado-selector">
@@ -2029,7 +2053,7 @@
         </div>
         <div class="field-group photo-upload" id="fotos-section-${id}" style="display:none;">
           <div class="field-label">
-            Fotografías de Respaldo
+            <span id="fotos-label-${id}">${esRetiroHecho(item) ? '2. Fotografías del producto' : 'Fotografías de Respaldo'}</span>
             <span id="fotos-req-${id}" style="color:var(--danger); font-size:10px; margin-left:6px;"></span>
           </div>
           <div class="photo-drop" id="drop-${id}"
@@ -2066,6 +2090,7 @@
       </div>`;
 
         container.appendChild(card);
+        aplicarBloqueoProducto(id);
         if (id === selectedIds[0]) toggleCard(id);
       });
     }
@@ -2115,6 +2140,14 @@
         rendiciones[id].fotosData = [];
       }
 
+      // El documento sólo tiene sentido si algo volvió a bodega: en los estados
+      // terminales se esconde, y esCardCompleta deja de exigirlo.
+      const docSection = document.getElementById(`doc-section-${id}`);
+      if (docSection) {
+        docSection.style.display =
+          (estado === 'No Retirado' || estado === 'Producto no rendido') ? 'none' : 'block';
+      }
+      aplicarBloqueoProducto(id);
       checkCardComplete(id);
     }
 
@@ -2165,6 +2198,7 @@
       } else {
         rendiciones[id].estado = '';
       }
+      aplicarBloqueoProducto(id);
       checkCardComplete(id);
     }
 
@@ -2453,8 +2487,12 @@
     // poder cubrirla con ?selftest=1: es la regla que decide qué se exige y qué no.
     // Las fotos SOLO son obligatorias donde hay daño; en 'Nuevo'/'Entre' son opcionales.
     function esCardCompleta(r) {
-      // Retiro concretado: sin el documento no se cierra, pase lo que pase con el resto.
-      if (r.requiereDoc && !(r.docsData && r.docsData.length)) return false;
+      // Retiro concretado: sin el documento no se cierra. La excepción son los estados
+      // terminales, donde el bodeguero declara que no volvió nada: ahí no hay papel que
+      // fotografiar y exigirlo dejaba la orden trabada sin salida.
+      const terminal = r.estado === 'No Retirado' || r.estado === 'Producto no rendido'
+                    || r.grupoMode === 'no_retirado' || r.grupoMode === 'no_rendido';
+      if (r.requiereDoc && !terminal && !(r.docsData && r.docsData.length)) return false;
       if (r.count > 1) {
         if (r.grupoMode === 'no_retirado' || r.grupoMode === 'no_rendido') {
           return true; // estados terminales: no requieren bultos ni fotos
