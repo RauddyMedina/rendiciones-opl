@@ -1018,27 +1018,6 @@
 <body>
 
   <!-- PANTALLA DÍA NO HÁBIL -->
-  <div class="closed-screen hidden" id="closedScreen">
-    <div class="closed-card">
-      <div class="id-screen-logo">Control de Rendiciones Bodega</div>
-      <span class="closed-icon">🔒</span>
-      <div class="closed-title">Sistema Cerrado</div>
-      <div class="closed-date" id="closedDateText">—</div>
-      <div class="closed-sub">
-        Hoy es <strong id="closedDayName">—</strong>. El sistema de rendiciones opera de <strong>lunes a
-          sábado</strong>.<br><br>
-        Si necesitas acceder por excepción, contacta al administrador.
-      </div>
-      <div style="font-size:11px; color:var(--text2); font-family:'DM Mono',monospace;">
-        Próxima apertura: <span id="proximaApertura" style="color:var(--accent);">—</span>
-      </div>
-      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
-        <a href="?prueba=1"
-          style="font-size:11px; color:var(--text2); font-family:'DM Mono',monospace; text-decoration:none; letter-spacing:1px; opacity:0.5;">[
-          modo prueba ]</a>
-      </div>
-    </div>
-  </div>
 
   <!-- PANTALLA DE CARGA -->
   <div class="id-screen hidden" id="loadingScreen">
@@ -1295,38 +1274,6 @@
         </button>
       </div>
 
-      <!-- Fechas especiales -->
-      <div class="step" style="margin-top:12px;">
-        <div class="step-header">
-          <div class="step-num">📅</div>
-          <div>
-            <div class="step-title">Días con Rendición Excepcional</div>
-            <div class="step-desc">Domingos u otros días en que SÍ habrá rendiciones</div>
-          </div>
-        </div>
-
-        <div class="field-label">Agregar fecha de excepción</div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input type="date" id="fechaExcepcionInput"
-            style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:14px; padding:10px 12px; outline:none; color-scheme:dark;">
-          <button class="btn btn-primary" onclick="agregarFechaExcepcion()"
-            style="width:auto; margin-top:0; padding:10px 16px; white-space:nowrap;">
-            + Agregar
-          </button>
-        </div>
-
-        <div id="fechasExcepcionList" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:4px; min-height:28px;">
-          <span style="font-size:11px; color:var(--text2); font-family:'DM Mono',monospace;" id="emptyFechasMsg">Sin
-            fechas excepcionales registradas</span>
-        </div>
-
-        <div
-          style="margin-top:10px; font-size:11px; color:var(--text2); font-family:'DM Mono',monospace; line-height:1.6;">
-          Los <strong style="color:var(--danger);">domingos</strong> el sistema se cierra automáticamente, salvo las
-          fechas aquí indicadas.
-        </div>
-      </div>
-
       <!-- Limpiar datos locales -->
       <div class="step" style="margin-top:12px;">
         <div class="step-header">
@@ -1422,17 +1369,11 @@
       // Limpiar borradores de días anteriores (los de hoy se conservan)
       purgarBorradoresViejos();
 
-      renderFechasExcepcion();
 
       const urlParams = new URLSearchParams(window.location.search);
       const modoP = urlParams.get('prueba') === '1';
 
       if (urlParams.get('selftest') === '1') { correrSelfTest(); return; }
-
-      if (!modoP && !esDiaHabil(now)) {
-        mostrarPantallaCerrada(now, dias, meses);
-        return;
-      }
 
       // Mostrar spinner mientras carga
       document.getElementById('loadingScreen').classList.remove('hidden');
@@ -1600,96 +1541,9 @@
       if (el) el.textContent = msg;
     }
 
-    function esDiaHabil(fecha) {
-      const dow = fecha.getDay();
-      if (dow !== 0) return true;
-      const fechasEx = getFechasExcepcion();
-      return fechasEx.includes(toISOLocal(fecha));
-    }
-
     function toISOLocal(d) {
       const pad = n => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    }
-
-    function mostrarPantallaCerrada(now, dias, meses) {
-      document.getElementById('closedScreen').classList.remove('hidden');
-      document.getElementById('loginScreen').classList.add('hidden');
-      document.getElementById('loadingScreen').classList.add('hidden');
-      document.getElementById('appWrapper').classList.add('hidden');
-
-      const dayName = dias[now.getDay()];
-      document.getElementById('closedDayName').textContent = dayName;
-      document.getElementById('closedDateText').textContent =
-        `${now.getDate()} de ${meses[now.getMonth()]} ${now.getFullYear()}`;
-
-      const proxLunes = new Date(now);
-      proxLunes.setDate(now.getDate() + (1 + 7 - now.getDay()) % 7 || 7);
-      document.getElementById('proximaApertura').textContent =
-        `Lunes ${proxLunes.getDate()} de ${meses[proxLunes.getMonth()]}`;
-    }
-
-    // ─── FECHAS DE EXCEPCIÓN ──────────────────────────────────────
-    function getFechasExcepcion() {
-      const raw = localStorage.getItem('fechasExcepcion_opl');
-      return raw ? JSON.parse(raw) : [];
-    }
-
-    function saveFechasExcepcion(arr) {
-      localStorage.setItem('fechasExcepcion_opl', JSON.stringify(arr));
-    }
-
-    function agregarFechaExcepcion() {
-      const input = document.getElementById('fechaExcepcionInput');
-      const val = input.value;
-      if (!val) { showToast('Selecciona una fecha', 'error'); return; }
-
-      const fechas = getFechasExcepcion();
-      if (fechas.includes(val)) { showToast('Esa fecha ya está registrada', 'error'); return; }
-
-      const d = new Date(val + 'T12:00:00');
-      if (d.getDay() !== 0) {
-        showToast('Solo puedes agregar domingos como excepción', 'error');
-        return;
-      }
-
-      fechas.push(val);
-      fechas.sort();
-      saveFechasExcepcion(fechas);
-      renderFechasExcepcion();
-      input.value = '';
-      showToast(`Domingo ${val} agregado ✓`, 'success');
-    }
-
-    function quitarFechaExcepcion(fecha) {
-      const fechas = getFechasExcepcion().filter(f => f !== fecha);
-      saveFechasExcepcion(fechas);
-      renderFechasExcepcion();
-      showToast('Fecha eliminada', '');
-    }
-
-    function renderFechasExcepcion() {
-      const container = document.getElementById('fechasExcepcionList');
-      if (!container) return;
-      const fechas = getFechasExcepcion();
-      container.innerHTML = '';
-
-      if (fechas.length === 0) {
-        const msg = document.createElement('span');
-        msg.style.cssText = 'font-size:11px; color:var(--text2); font-family:"DM Mono",monospace;';
-        msg.textContent = 'Sin fechas excepcionales registradas';
-        container.appendChild(msg);
-        return;
-      }
-
-      fechas.forEach(f => {
-        const d = new Date(f + 'T12:00:00');
-        const label = d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
-        const tag = document.createElement('div');
-        tag.className = 'fecha-tag';
-        tag.innerHTML = `📅 ${label} <button onclick="quitarFechaExcepcion('${f}')" title="Eliminar">×</button>`;
-        container.appendChild(tag);
-      });
     }
 
     // ─── PATENTE SELECT ────────────────────────────────────────────
@@ -3427,14 +3281,12 @@
     }
 
     function limpiarDatosLocales() {
-      if (!confirm('¿Estás seguro? Esto borrará el historial de rendiciones y las fechas de excepción guardadas en ESTE dispositivo.\n\nLos datos ya enviados al sistema NO se pierden.')) return;
+      if (!confirm('¿Estás seguro? Esto borrará el historial de rendiciones guardado en ESTE dispositivo.\n\nLos datos ya enviados al sistema NO se pierden.')) return;
       try {
         localStorage.removeItem('rendicionHistory_opl');
-        localStorage.removeItem('fechasExcepcion_opl');
         allRendiciones = [];
         showToast('✓ Datos locales eliminados', 'success');
         actualizarInfoLocalStorage();
-        renderFechasExcepcion();
       } catch (e) {
         showToast('Error al limpiar: ' + e.message, 'error');
       }
